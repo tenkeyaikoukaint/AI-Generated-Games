@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>シンプル・フライトシミュレータ</title>
+    <!-- Tailwind CSS for clean HUD layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: #87ceeb;
+            touch-action: none;
+        }
+
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        /* Glassmorphism HUD panels */
+        .hud-glass {
+            background: rgba(15, 23, 42, 0.58);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .hud-btn {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            color: #f8fafc;
+            transition: all 0.15s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .hud-btn:hover {
+            background: rgba(30, 41, 59, 0.85);
+            transform: translateY(-1px);
+            border-color: rgba(255, 255, 255, 0.45);
+        }
+
+        .hud-btn:active {
+            transform: translateY(1px) scale(0.97);
+        }
+
+        .hud-btn.active-toggle {
+            background: rgba(14, 165, 233, 0.8);
+            border-color: rgba(186, 230, 253, 0.7);
+        }
+
+        /* Artificial Horizon */
+        .horizon-circle {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid rgba(255, 255, 255, 0.65);
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+            background: #38bdf8;
+        }
+
+        .horizon-plane {
+            position: absolute;
+            left: -50%;
+            top: -50%;
+            width: 200%;
+            height: 200%;
+            transform-origin: center center;
+            transition: transform 0.05s linear;
+        }
+
+        .horizon-sky {
+            width: 100%;
+            height: 50%;
+            background: linear-gradient(to bottom, #0284c7, #38bdf8);
+        }
+
+        .horizon-ground {
+            width: 100%;
+            height: 50%;
+            background: linear-gradient(to bottom, #92400e, #451a03);
+            border-top: 2px solid rgba(255, 255, 255, 0.9);
+        }
+
+        .horizon-center-mark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 34px;
+            height: 12px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Vertical Throttle Slider */
+        .throttle-track {
+            position: relative;
+            width: 28px;
+            height: 170px;
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 9999px;
+            overflow: hidden;
+            cursor: pointer;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        .throttle-fill {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: linear-gradient(to top, #0ea5e9, #38bdf8, #fbbf24);
+            border-radius: 9999px;
+            pointer-events: none;
+            transition: height 0.05s linear;
+        }
+
+        .throttle-thumb {
+            position: absolute;
+            left: 50%;
+            transform: translate(-50%, 50%);
+            width: 36px;
+            height: 16px;
+            background: #ffffff;
+            border: 2px solid #0284c7;
+            border-radius: 9999px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        /* Touch D-pad buttons */
+        .pad-btn {
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: white;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            transition: background 0.1s ease, transform 0.1s ease;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .pad-btn:active, .pad-btn.pressed {
+            background: rgba(14, 165, 233, 0.85);
+            transform: scale(0.94);
+        }
+
+        /* Cockpit overlay frame */
+        #cockpit-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        #cockpit-overlay.visible {
+            opacity: 1;
+        }
+
+        /* Toast notification */
+        #toast-banner {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .toast-hidden {
+            opacity: 0;
+            transform: translate(-50%, -20px);
+            pointer-events: none;
+        }
+
+        .toast-visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- 3D Viewport -->
+    <div id="canvas-container"></div>
+
+    <!-- Subtle Cockpit Frame Overlay (visible in cockpit camera mode) -->
+    <div id="cockpit-overlay">
+        <svg viewBox="0 0 1000 600" preserveAspectRatio="none" class="w-full h-full">
+            <!-- Windshield struts -->
+            <path d="M 0,0 L 140,0 L 60,600 L 0,600 Z" fill="rgba(15,23,42,0.55)" />
+            <path d="M 1000,0 L 860,0 L 940,600 L 1000,600 Z" fill="rgba(15,23,42,0.55)" />
+            <path d="M 0,0 L 1000,0 L 1000,24 L 0,24 Z" fill="rgba(15,23,42,0.55)" />
+            <!-- Dashboard cowling -->
+            <path d="M 0,600 L 0,530 Q 500,475 1000,530 L 1000,600 Z" fill="rgba(15,23,42,0.85)" />
+            <path d="M 0,530 Q 500,475 1000,530" fill="none" stroke="rgba(148,163,184,0.35)" stroke-width="3" />
+            <!-- Center crosshair -->
+            <circle cx="500" cy="300" r="14" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5" />
+            <line x1="476" y1="300" x2="492" y2="300" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" />
+            <line x1="508" y1="300" x2="524" y2="300" stroke="rgba(255,255,255,0.55)" stroke-width="1.5" />
+            <circle cx="500" cy="300" r="2" fill="rgba(56,189,248,0.9)" />
+        </svg>
+    </div>
+
+    <!-- HUD Layer -->
+    <div class="fixed inset-0 pointer-events-none z-10 p-3 sm:p-4 flex flex-col justify-between">
+        <!-- Top Row: Flight Instruments (Left) & Quick Toggles (Right) -->
+        <div class="flex items-start justify-between gap-2">
+            <!-- Top-Left: Flight Telemetry & Horizon -->
+            <div class="hud-glass rounded-2xl p-3 text-white pointer-events-auto flex items-center gap-3 sm:gap-4">
+                <!-- Mini Artificial Horizon -->
+                <div class="flex flex-col items-center gap-1">
+                    <div class="horizon-circle" title="姿勢指示器">
+                        <div id="horizon-plane" class="horizon-plane">
+                            <div class="horizon-sky"></div>
+                            <div class="horizon-ground"></div>
+                        </div>
+                        <svg class="horizon-center-mark" viewBox="0 0 34 12">
+                            <path d="M 2,6 L 12,6 L 14,9 M 32,6 L 22,6 L 20,9" stroke="#facc15" stroke-width="2.2" fill="none" stroke-linecap="round" />
+                            <circle cx="17" cy="6" r="1.8" fill="#facc15" />
+                        </svg>
+                    </div>
+                    <div id="compass-text" class="text-[11px] font-bold tracking-wider text-sky-300 bg-slate-900/60 px-2 py-0.5 rounded-full">
+                        N 000°
+                    </div>
+                </div>
+
+                <!-- Numeric Readouts -->
+                <div class="grid grid-cols-1 gap-1.5 min-w-[110px] sm:min-w-[130px]">
+                    <div class="flex items-baseline justify-between gap-2">
+                        <span class="text-xs text-slate-300">速度</span>
+                        <span class="text-base sm:text-lg font-bold tabular-nums text-sky-300">
+                            <span id="hud-speed">95</span> <span class="text-xs font-normal text-slate-300">kt</span>
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-2">
+                        <span class="text-xs text-slate-300">高度</span>
+                        <span class="text-base sm:text-lg font-bold tabular-nums text-emerald-300">
+                            <span id="hud-alt">45</span> <span class="text-xs font-normal text-slate-300">m</span>
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-2 border-t border-white/15 pt-1">
+                        <span class="text-xs text-amber-200">リング</span>
+                        <span class="text-sm sm:text-base font-bold tabular-nums text-amber-300">
+                            <span id="hud-rings">0</span> / <span id="hud-rings-total">12</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top-Right: Quick Action Buttons -->
+            <div class="flex flex-wrap justify-end gap-1.5 sm:gap-2 pointer-events-auto max-w-[55%] sm:max-w-none">
+                <button id="btn-camera" class="hud-btn rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold flex items-center gap-1.5" title="視点切替 (C)">
+                    <span>📷</span>
+                    <span id="lbl-camera" class="hidden sm:inline">後方視点</span>
+                </button>
+                <button id="btn-invert" class="hud-btn rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold flex items-center gap-1.5" title="上下操作の反転">
+                    <span>↕️</span>
+                    <span id="lbl-invert">上下反転: OFF</span>
+                </button>
+                <button id="btn-sound" class="hud-btn rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold flex items-center gap-1.5" title="効果音・エンジン音のON/OFF">
+                    <span id="icon-sound">🔇</span>
+                    <span class="hidden sm:inline" id="lbl-sound">音声 OFF</span>
+                </button>
+                <button id="btn-reset" class="hud-btn rounded-xl px-2.5 py-2 text-xs sm:text-sm font-semibold flex items-center gap-1.5" title="初期位置にリセット (R)">
+                    <span>🔄</span>
+                    <span>リセット</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center Toast Notification (Landing / Water / All Rings Cleared) -->
+        <div id="toast-banner" class="toast-hidden fixed top-24 left-1/2 z-20 hud-glass rounded-2xl px-5 py-3 text-white flex items-center gap-3 max-w-[90vw]">
+            <span id="toast-icon" class="text-xl">✈️</span>
+            <div class="text-sm sm:text-base font-semibold" id="toast-message">フライト開始！</div>
+            <button id="toast-reset-btn" class="hidden ml-2 bg-sky-500 hover:bg-sky-400 text-white text-xs sm:text-sm font-bold px-3 py-1.5 rounded-xl transition cursor-pointer">
+                再開 (R)
+            </button>
+        </div>
+
+        <!-- Right Side: Vertical Throttle Slider -->
+        <div class="fixed right-3 sm:right-5 top-1/2 -translate-y-1/2 pointer-events-auto flex flex-col items-center gap-2">
+            <div class="hud-glass rounded-2xl px-2 py-3 flex flex-col items-center gap-2">
+                <span class="text-[11px] font-bold text-slate-200 tracking-wider">出力</span>
+                <div class="relative py-2">
+                    <div id="throttle-track" class="throttle-track" title="ドラッグしてスロットル調整">
+                        <div id="throttle-fill" class="throttle-fill" style="height: 65%;"></div>
+                    </div>
+                    <div id="throttle-thumb" class="throttle-thumb" style="bottom: 65%;"></div>
+                </div>
+                <span id="hud-throttle" class="text-xs font-bold tabular-nums text-amber-300">65%</span>
+            </div>
+        </div>
+
+        <!-- Bottom Row: Control Guide (Left) & Touch Flight Pad (Right) -->
+        <div class="flex items-end justify-between gap-2">
+            <!-- Bottom-Left: Compact Japanese Control Guide -->
+            <div class="hud-glass rounded-2xl px-3.5 py-2.5 text-white/90 text-[11px] sm:text-xs pointer-events-auto max-w-[60vw] sm:max-w-md">
+                <div class="font-bold text-sky-300 mb-1 flex items-center gap-1.5">
+                    <span>✈️ シンプル・フライトシミュレータ</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 leading-relaxed">
+                    <div><kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">↑↓</kbd> / <kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">WS</kbd> 上昇・下降</div>
+                    <div><kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">←→</kbd> / <kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">AD</kbd> 左右旋回</div>
+                    <div><kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">Q</kbd> / <kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">E</kbd> スピード調整</div>
+                    <div><kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">C</kbd> 視点切替　<kbd class="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[10px]">R</kbd> リセット</div>
+                </div>
+            </div>
+
+            <!-- Bottom-Right: Optional Touch / Mouse Flight Pad -->
+            <div class="pointer-events-auto flex flex-col items-center gap-1.5 mr-1 mb-1">
+                <button data-control="up" class="pad-btn w-12 h-11 sm:w-13 sm:h-11 text-base" aria-label="上昇">▲</button>
+                <div class="flex items-center gap-1.5">
+                    <button data-control="left" class="pad-btn w-12 h-11 sm:w-13 sm:h-11 text-base" aria-label="左旋回">◀</button>
+                    <button data-control="down" class="pad-btn w-12 h-11 sm:w-13 sm:h-11 text-base" aria-label="下降">▼</button>
+                    <button data-control="right" class="pad-btn w-12 h-11 sm:w-13 sm:h-11 text-base" aria-label="右旋回">▶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * シンプル・フライトシミュレータ
+         * ブラウザ上で快適に動作する、直感的でやさしい3Dフライトシミュレータ
+         */
+
+        // ==========================================
+        // 1. グローバル変数・状態管理
+        // ==========================================
+        let scene, camera, renderer;
+        let planeGroup, propellerMesh;
+        let oceanMesh;
+        const clouds = [];
+        const rings = [];
+        const particles = [];
+        const islandColliders = []; // 簡易地形高度判定用
+
+        // フライト状態（アーケード寄りのやさしい物理モデル）
+        const flightState = {
+            position: new THREE.Vector3(0, 42, 260),
+            yaw: 0,           // 進行方位 (0 = -Z方向 / 北)
+            pitch: 0,         // ピッチ角 (-42° ～ +42°)
+            roll: 0,          // バンク角 (旋回に合わせて自動傾き・自動水平復帰)
+            throttle: 0.65,   // スロットル (0.0 ～ 1.0)
+            speed: 55,        // 現在速度 (ワールド単位/秒)
+            isCrashed: false, // 着水・衝突フラグ
+            isLanded: false,  // 滑走路着陸フラグ
+            ringsCollected: 0,
+            totalRings: 12
+        };
+
+        // 設定・カメラ状態
+        const settings = {
+            invertPitch: false,   // false: ↑/Wで上昇 (初心者向けデフォルト)
+            cameraMode: 'third',  // 'third' (後方視点) | 'cockpit' (コックピット視点)
+            soundEnabled: false   // ユーザー操作後にON可能
+        };
+
+        // カメラオービット用（マウスドラッグで機体の周囲を見回せる）
+        const cameraOrbit = {
+            isDragging: false,
+            prevX: 0,
+            prevY: 0,
+            yawOffset: 0,
+            pitchOffset: 0
+        };
+
+        // 入力状態
+        const input = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            throttleUp: false,
+            throttleDown: false
+        };
+
+        // Web Audio API (エンジン音・リング通過チャイム)
+        const audio = {
+            ctx: null,
+            engineOsc: null,
+            engineGain: null,
+            engineFilter: null,
+            initialized: false
+        };
+
+        // タイマー・トースト制御
+        let lastTime = 0;
+        let toastTimeout = null;
+
+        // ==========================================
+        // 2. Web Audio API サウンドシステム
+        // ==========================================
+        function initAudio() {
+            if (audio.initialized) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                audio.ctx = new AudioCtx();
+
+                // 穏やかなプロペラエンジン音（のこぎり波 + ローパスフィルタ）
+                audio.engineOsc = audio.ctx.createOscillator();
+                audio.engineOsc.type = 'sawtooth';
+                audio.engineOsc.frequency.value = 55;
+
+                audio.engineFilter = audio.ctx.createBiquadFilter();
+                audio.engineFilter.type = 'lowpass';
+                audio.engineFilter.frequency.value = 160;
+
+                audio.engineGain = audio.ctx.createGain();
+                audio.engineGain.gain.value = 0.0;
+
+                audio.engineOsc.connect(audio.engineFilter);
+                audio.engineFilter.connect(audio.engineGain);
+                audio.engineGain.connect(audio.ctx.destination);
+                audio.engineOsc.start();
+
+                audio.initialized = true;
+            } catch (e) {
+                console.warn('Web Audio API の初期化に失敗しました:', e);
+            }
+        }
+
+        function updateEngineSound() {
+            if (!audio.initialized || !audio.ctx) return;
+            const now = audio.ctx.currentTime;
+            if (!settings.soundEnabled || flightState.isCrashed) {
+                audio.engineGain.gain.setTargetAtTime(0, now, 0.08);
+                return;
+            }
+            const targetFreq = 45 + flightState.throttle * 65 + (flightState.speed / 90) * 15;
+            const targetGain = 0.03 + flightState.throttle * 0.045;
+            audio.engineOsc.frequency.setTargetAtTime(targetFreq, now, 0.1);
+            audio.engineFilter.frequency.setTargetAtTime(140 + flightState.throttle * 200, now, 0.1);
+            audio.engineGain.gain.setTargetAtTime(targetGain, now, 0.1);
+        }
+
+        function playRingChime(isFinal = false) {
+            if (!settings.soundEnabled || !audio.ctx) return;
+            try {
+                const now = audio.ctx.currentTime;
+                const notes = isFinal ? [523.25, 659.25, 783.99, 1046.5] : [587.33, 880.0];
+                notes.forEach((freq, idx) => {
+                    const osc = audio.ctx.createOscillator();
+                    const gain = audio.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.001, now + idx * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.16, now + idx * 0.08 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.45);
+                    osc.connect(gain);
+                    gain.connect(audio.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.5);
+                });
+            } catch (e) {
+                // 無視
+            }
+        }
+
+        function playSplashSound() {
+            if (!settings.soundEnabled || !audio.ctx) return;
+            try {
+                const now = audio.ctx.currentTime;
+                const bufferSize = audio.ctx.sampleRate * 0.35;
+                const buffer = audio.ctx.createBuffer(1, bufferSize, audio.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+                }
+                const noise = audio.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = audio.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 600;
+
+                const gain = audio.ctx.createGain();
+                gain.gain.value = 0.2;
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audio.ctx.destination);
+                noise.start(now);
+            } catch (e) {
+                // 無視
+            }
+        }
+
+        // ==========================================
+        // 3. 3Dシーン・ワールド構築
+        // ==========================================
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x9bd7f2, 350, 2600);
+
+            camera = new THREE.PerspectiveCamera(
+                62,
+                window.innerWidth / window.innerHeight,
+                0.5,
+                4000
+            );
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // ライティング（明るく爽やかな昼間の空）
+            const hemiLight = new THREE.HemisphereLight(0xdff6ff, 0x3b82f6, 0.75);
+            hemiLight.position.set(0, 400, 0);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff7e6, 0.95);
+            dirLight.position.set(220, 380, 180);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 50;
+            dirLight.shadow.camera.far = 1200;
+            const d = 350;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // 太陽（空の装飾）
+            const sunGeo = new THREE.SphereGeometry(45, 16, 16);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xfff3b0, fog: false });
+            const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+            sunMesh.position.set(1100, 950, -1400);
+            scene.add(sunMesh);
+
+            buildOcean();
+            buildMainIslandWithRunway();
+            buildSurroundingIslands();
+            buildClouds();
+            buildAirplane();
+            buildRings();
+        }
+
+        // 広大な海
+        function buildOcean() {
+            const oceanGeo = new THREE.PlaneGeometry(12000, 12000, 48, 48);
+            oceanGeo.rotateX(-Math.PI / 2);
+            const oceanMat = new THREE.MeshPhongMaterial({
+                color: 0x0ea5e9,
+                specular: 0x7dd3fc,
+                shininess: 65,
+                flatShading: true
+            });
+            oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
+            oceanMesh.receiveShadow = true;
+            scene.add(oceanMesh);
+        }
+
+        // ローポリの木を作成
+        function createTree(x, y, z, scale = 1) {
+            const tree = new THREE.Group();
+            const trunkGeo = new THREE.CylinderGeometry(0.45 * scale, 0.65 * scale, 3 * scale, 6);
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x78350f, flatShading: true });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 1.5 * scale;
+            tree.add(trunk);
+
+            const leafMat = new THREE.MeshLambertMaterial({ color: 0x15803d, flatShading: true });
+            const leaf1 = new THREE.Mesh(new THREE.ConeGeometry(2.6 * scale, 5 * scale, 7), leafMat);
+            leaf1.position.y = 4.6 * scale;
+            tree.add(leaf1);
+
+            const leaf2 = new THREE.Mesh(new THREE.ConeGeometry(2.0 * scale, 4 * scale, 7), leafMat);
+            leaf2.position.y = 7.0 * scale;
+            tree.add(leaf2);
+
+            tree.position.set(x, y, z);
+            scene.add(tree);
+        }
+
+        // メイン島と滑走路
+        function buildMainIslandWithRunway() {
+            const islandGroup = new THREE.Group();
+
+            // 砂浜ベース
+            const sandGeo = new THREE.CylinderGeometry(165, 190, 4, 24);
+            const sandMat = new THREE.MeshLambertMaterial({ color: 0xfde68a, flatShading: true });
+            const sand = new THREE.Mesh(sandGeo, sandMat);
+            sand.position.set(0, 1.5, -20);
+            sand.scale.set(0.85, 1, 1.45);
+            sand.receiveShadow = true;
+            islandGroup.add(sand);
+
+            // 緑の大地（平坦な飛行場エリア）
+            const grassGeo = new THREE.CylinderGeometry(148, 160, 4.5, 24);
+            const grassMat = new THREE.MeshLambertMaterial({ color: 0x4ade80, flatShading: true });
+            const grass = new THREE.Mesh(grassGeo, grassMat);
+            grass.position.set(0, 3.0, -20);
+            grass.scale.set(0.82, 1, 1.42);
+            grass.receiveShadow = true;
+            islandGroup.add(grass);
+
+            // 滑走路（アスファルト）
+            const runwayY = 5.35;
+            const runwayGeo = new THREE.PlaneGeometry(24, 280);
+            runwayGeo.rotateX(-Math.PI / 2);
+            const runwayMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
+            const runway = new THREE.Mesh(runwayGeo, runwayMat);
+            runway.position.set(0, runwayY, -20);
+            runway.receiveShadow = true;
+            islandGroup.add(runway);
+
+            // 滑走路の中央破線
+            const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+            for (let z = -140; z <= 100; z += 18) {
+                const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 9), stripeMat);
+                stripe.rotation.x = -Math.PI / 2;
+                stripe.position.set(0, runwayY + 0.05, z);
+                islandGroup.add(stripe);
+            }
+
+            // 滑走路の両端ゼブラマーキング
+            [-152, 112].forEach(endZ => {
+                for (let x = -8; x <= 8; x += 4) {
+                    const mark = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 10), stripeMat);
+                    mark.rotation.x = -Math.PI / 2;
+                    mark.position.set(x, runwayY + 0.05, endZ);
+                    islandGroup.add(mark);
+                }
+            });
+
+            // 管制塔
+            const towerBase = new THREE.Mesh(
+                new THREE.BoxGeometry(10, 18, 10),
+                new THREE.MeshLambertMaterial({ color: 0xf1f5f9 })
+            );
+            towerBase.position.set(34, 14, -30);
+            towerBase.castShadow = true;
+            islandGroup.add(towerBase);
+
+            const towerGlass = new THREE.Mesh(
+                new THREE.CylinderGeometry(7.5, 6.2, 5.5, 8),
+                new THREE.MeshLambertMaterial({ color: 0x0284c7 })
+            );
+            towerGlass.position.set(34, 25.5, -30);
+            islandGroup.add(towerGlass);
+
+            const towerRoof = new THREE.Mesh(
+                new THREE.CylinderGeometry(2, 8.2, 3, 8),
+                new THREE.MeshLambertMaterial({ color: 0xef4444 })
+            );
+            towerRoof.position.set(34, 29.5, -30);
+            islandGroup.add(towerRoof);
+
+            // 格納庫（ハンガー）
+            const hangar = new THREE.Mesh(
+                new THREE.BoxGeometry(22, 11, 28),
+                new THREE.MeshLambertMaterial({ color: 0x94a3b8 })
+            );
+            hangar.position.set(38, 10.5, 10);
+            hangar.castShadow = true;
+            islandGroup.add(hangar);
+
+            // 島の外周に小さな丘と木を配置
+            const hillPositions = [
+                [-68, -90, 32, 22],
+                [-72, 40, 28, 18],
+                [76, -100, 30, 24]
+            ];
+            hillPositions.forEach(([hx, hz, r, h]) => {
+                const hill = new THREE.Mesh(
+                    new THREE.ConeGeometry(r, h, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x22c55e, flatShading: true })
+                );
+                hill.position.set(hx, 5 + h / 2 - 2, hz);
+                islandGroup.add(hill);
+            });
+
+            // メイン島の木々（滑走路から離れた場所）
+            const treeCoords = [
+                [-45, -110], [-55, -70], [-42, -20], [-58, 25], [-46, 85],
+                [56, -120], [64, -65], [62, 48], [50, 90], [-36, 120]
+            ];
+            treeCoords.forEach(([tx, tz]) => {
+                createTree(tx, 5.1, tz, 1.1 + Math.random() * 0.5);
+            });
+
+            scene.add(islandGroup);
+
+            // メイン島の簡易コライダー登録
+            islandColliders.push({
+                type: 'main',
+                x: 0,
+                z: -20,
+                rx: 130,
+                rz: 225,
+                groundY: runwayY
+            });
+        }
+
+        // 周囲の景観用の島々
+        function buildSurroundingIslands() {
+            const islandSpecs = [
+                { x: -340, z: -380, r: 95, h: 48, trees: 10 },
+                { x: 320,  z: -420, r: 110, h: 62, trees: 12 },
+                { x: 0,    z: -740, r: 125, h: 75, trees: 14 },
+                { x: 480,  z: -100, r: 85, h: 38, trees: 8 },
+                { x: -460, z: 60,   r: 100, h: 52, trees: 10 },
+                { x: 380,  z: 360,  r: 90, h: 44, trees: 9 },
+                { x: -320, z: 420,  r: 105, h: 58, trees: 11 }
+            ];
+
+            islandSpecs.forEach(spec => {
+                const grp = new THREE.Group();
+
+                // 砂浜
+                const beach = new THREE.Mesh(
+                    new THREE.CylinderGeometry(spec.r * 0.92, spec.r * 1.08, 4, 12),
+                    new THREE.MeshLambertMaterial({ color: 0xfde68a, flatShading: true })
+                );
+                beach.position.y = 1.5;
+                grp.add(beach);
+
+                // 緑のベース
+                const base = new THREE.Mesh(
+                    new THREE.CylinderGeometry(spec.r * 0.78, spec.r * 0.9, 5, 12),
+                    new THREE.MeshLambertMaterial({ color: 0x4ade80, flatShading: true })
+                );
+                base.position.y = 4.5;
+                grp.add(base);
+
+                // 山・丘
+                const peak = new THREE.Mesh(
+                    new THREE.ConeGeometry(spec.r * 0.62, spec.h, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x22c55e, flatShading: true })
+                );
+                peak.position.y = 5 + spec.h / 2;
+                grp.add(peak);
+
+                // 高い山にはちょっとした岩肌アクセント
+                if (spec.h > 55) {
+                    const cap = new THREE.Mesh(
+                        new THREE.ConeGeometry(spec.r * 0.22, spec.h * 0.35, 8),
+                        new THREE.MeshLambertMaterial({ color: 0x94a3b8, flatShading: true })
+                    );
+                    cap.position.y = 5 + spec.h * 0.82;
+                    grp.add(cap);
+                }
+
+                grp.position.set(spec.x, 0, spec.z);
+                scene.add(grp);
+
+                // 島に木を配置
+                for (let i = 0; i < spec.trees; i++) {
+                    const angle = (i / spec.trees) * Math.PI * 2 + Math.random() * 0.5;
+                    const dist = spec.r * (0.45 + Math.random() * 0.32);
+                    const tx = spec.x + Math.cos(angle) * dist;
+                    const tz = spec.z + Math.sin(angle) * dist;
+                    createTree(tx, 6.5, tz, 1.0 + Math.random() * 0.7);
+                }
+
+                islandColliders.push({
+                    type: 'hill',
+                    x: spec.x,
+                    z: spec.z,
+                    r: spec.r,
+                    h: spec.h + 5
+                });
+            });
+        }
+
+        // ふんわり浮かぶローポリの雲
+        function buildClouds() {
+            const cloudMat = new THREE.MeshLambertMaterial({
+                color: 0xffffff,
+                flatShading: true
+            });
+
+            for (let i = 0; i < 36; i++) {
+                const cloud = new THREE.Group();
+                const puffs = 3 + Math.floor(Math.random() * 3);
+                for (let p = 0; p < puffs; p++) {
+                    const radius = 12 + Math.random() * 14;
+                    const puff = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 0), cloudMat);
+                    puff.position.set(
+                        (p - puffs / 2) * 14 + (Math.random() - 0.5) * 8,
+                        (Math.random() - 0.5) * 6,
+                        (Math.random() - 0.5) * 10
+                    );
+                    puff.scale.set(1.2, 0.72, 1.0);
+                    cloud.add(puff);
+                }
+
+                cloud.position.set(
+                    (Math.random() - 0.5) * 2400,
+                    115 + Math.random() * 150,
+                    (Math.random() - 0.5) * 2400
+                );
+                cloud.userData.driftSpeed = 1.5 + Math.random() * 2.5;
+                scene.add(cloud);
+                clouds.push(cloud);
+            }
+        }
+
+        // チャーミングな3Dプロペラ飛行機
+        function buildAirplane() {
+            planeGroup = new THREE.Group();
+
+            const redMat = new THREE.MeshPhongMaterial({ color: 0xef4444, flatShading: true });
+            const whiteMat = new THREE.MeshPhongMaterial({ color: 0xf8fafc, flatShading: true });
+            const darkMat = new THREE.MeshPhongMaterial({ color: 0x1e293b, flatShading: true });
+            const glassMat = new THREE.MeshPhongMaterial({
+                color: 0x38bdf8,
+                shininess: 100,
+                transparent: true,
+                opacity: 0.78
+            });
+
+            // 胴体（前方は -Z 方向）
+            const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.4, 6.2), whiteMat);
+            fuselage.castShadow = true;
+            planeGroup.add(fuselage);
+
+            // 機首ノーズ
+            const nose = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.6, 6), redMat);
+            nose.rotation.x = -Math.PI / 2;
+            nose.position.z = -3.9;
+            planeGroup.add(nose);
+
+            // 胴体サイドの赤いストライプ
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.35, 5.8), redMat);
+            stripe.position.y = 0.05;
+            planeGroup.add(stripe);
+
+            // キャノピー（コックピット窓）
+            const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.75, 2.2), glassMat);
+            canopy.position.set(0, 0.92, -0.4);
+            planeGroup.add(canopy);
+
+            // 主翼
+            const wing = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.22, 1.9), redMat);
+            wing.position.set(0, 0.15, -0.5);
+            wing.castShadow = true;
+            planeGroup.add(wing);
+
+            // 主翼の白いチップ
+            [-5.2, 5.2].forEach(wx => {
+                const tip = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.24, 1.92), whiteMat);
+                tip.position.set(wx, 0.15, -0.5);
+                planeGroup.add(tip);
+            });
+
+            // 水平尾翼
+            const hTail = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 1.0), whiteMat);
+            hTail.position.set(0, 0.2, 2.7);
+            planeGroup.add(hTail);
+
+            // 垂直尾翼
+            const vTail = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.6, 1.3), redMat);
+            vTail.position.set(0, 1.0, 2.65);
+            planeGroup.add(vTail);
+
+            // 着陸脚（車輪）
+            [-0.95, 0.95].forEach(lx => {
+                const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 6), darkMat);
+                strut.position.set(lx, -0.9, -1.0);
+                planeGroup.add(strut);
+
+                const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.22, 10), darkMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.position.set(lx, -1.3, -1.0);
+                planeGroup.add(wheel);
+            });
+
+            // プロペラ（回転するパーツ）
+            propellerMesh = new THREE.Group();
+            propellerMesh.position.set(0, 0, -4.75);
+
+            const hub = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), darkMat);
+            propellerMesh.add(hub);
+
+            const blade1 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.08), darkMat);
+            propellerMesh.add(blade1);
+
+            const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.6, 0.08), darkMat);
+            propellerMesh.add(blade2);
+
+            planeGroup.add(propellerMesh);
+
+            scene.add(planeGroup);
+        }
+
+        // 空に浮かぶゴールデンのリング（12個）
+        function buildRings() {
+            const ringPositions = [
+                [0, 42, 120],
+                [0, 48, -60],
+                [45, 62, -230],
+                [170, 75, -360],
+                [260, 88, -460],
+                [120, 95, -620],
+                [-60, 102, -680],
+                [-240, 85, -520],
+                [-320, 68, -280],
+                [-280, 58, -40],
+                [-170, 52, 160],
+                [-40, 46, 220]
+            ];
+
+            const ringGeo = new THREE.TorusGeometry(13, 1.35, 12, 28);
+            const glowGeo = new THREE.TorusGeometry(13, 2.2, 8, 24);
+
+            ringPositions.forEach(([x, y, z], index) => {
+                const grp = new THREE.Group();
+
+                const ringMat = new THREE.MeshPhongMaterial({
+                    color: 0xfacc15,
+                    emissive: 0xd97706,
+                    emissiveIntensity: 0.45,
+                    shininess: 90
+                });
+                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                grp.add(ringMesh);
+
+                const glowMat = new THREE.MeshBasicMaterial({
+                    color: 0xfef08a,
+                    transparent: true,
+                    opacity: 0.24
+                });
+                const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+                grp.add(glowMesh);
+
+                grp.position.set(x, y, z);
+
+                // 次のリングの方向をゆるやかに向かせる
+                const nextPos = ringPositions[(index + 1) % ringPositions.length];
+                grp.lookAt(nextPos[0], nextPos[1], nextPos[2]);
+
+                grp.userData = {
+                    collected: false,
+                    baseY: y,
+                    phase: index * 0.6
+                };
+
+                scene.add(grp);
+                rings.push(grp);
+            });
+
+            flightState.totalRings = rings.length;
+            document.getElementById('hud-rings-total').textContent = rings.length;
+        }
+
+        // リング通過時のキラキラパーティクル
+        function spawnRingSparkles(pos) {
+            const geo = new THREE.OctahedronGeometry(0.9, 0);
+            for (let i = 0; i < 18; i++) {
+                const mat = new THREE.MeshBasicMaterial({
+                    color: i % 2 === 0 ? 0xfef08a : 0x38bdf8,
+                    transparent: true,
+                    opacity: 1
+                });
+                const p = new THREE.Mesh(geo, mat);
+                p.position.copy(pos);
+                const vel = new THREE.Vector3(
+                    (Math.random() - 0.5) * 38,
+                    (Math.random() - 0.5) * 38,
+                    (Math.random() - 0.5) * 38
+                );
+                p.userData = { vel, life: 1.0 };
+                scene.add(p);
+                particles.push(p);
+            }
+        }
+
+        // ==========================================
+        // 4. 地形高度チェック・リセット・トースト
+        // ==========================================
+        function getTerrainInfo(x, z) {
+            // メイン島の滑走路判定
+            if (Math.abs(x) <= 15 && z >= -165 && z <= 125) {
+                return { height: 5.35, onRunway: true };
+            }
+
+            // メイン島（滑走路外）
+            const main = islandColliders[0];
+            if (main) {
+                const nx = (x - main.x) / main.rx;
+                const nz = (z - main.z) / main.rz;
+                if (nx * nx + nz * nz <= 1.0) {
+                    return { height: main.groundY, onRunway: false };
+                }
+            }
+
+            // 周囲の島々（円錐形の簡易高さ）
+            for (let i = 1; i < islandColliders.length; i++) {
+                const isl = islandColliders[i];
+                const dist = Math.hypot(x - isl.x, z - isl.z);
+                if (dist < isl.r) {
+                    const ratio = Math.max(0, 1 - dist / (isl.r * 0.72));
+                    const height = 5.5 + ratio * (isl.h - 5.5);
+                    return { height, onRunway: false };
+                }
+            }
+
+            // 海面
+            return { height: 0, onRunway: false };
+        }
+
+        function showToast(message, icon = '✈️', showResetBtn = false, duration = 3200) {
+            const banner = document.getElementById('toast-banner');
+            const msgEl = document.getElementById('toast-message');
+            const iconEl = document.getElementById('toast-icon');
+            const resetBtn = document.getElementById('toast-reset-btn');
+
+            msgEl.textContent = message;
+            iconEl.textContent = icon;
+            resetBtn.classList.toggle('hidden', !showResetBtn);
+
+            banner.classList.remove('toast-hidden');
+            banner.classList.add('toast-visible');
+
+            if (toastTimeout) clearTimeout(toastTimeout);
+            if (duration > 0) {
+                toastTimeout = setTimeout(() => {
+                    banner.classList.remove('toast-visible');
+                    banner.classList.add('toast-hidden');
+                }, duration);
+            }
+        }
+
+        function resetFlight(resetRings = false) {
+            flightState.position.set(0, 42, 250);
+            flightState.yaw = 0;
+            flightState.pitch = 0;
+            flightState.roll = 0;
+            flightState.throttle = 0.65;
+            flightState.speed = 58;
+            flightState.isCrashed = false;
+            flightState.isLanded = false;
+
+            cameraOrbit.yawOffset = 0;
+            cameraOrbit.pitchOffset = 0;
+
+            if (resetRings) {
+                flightState.ringsCollected = 0;
+                rings.forEach(r => {
+                    r.userData.collected = false;
+                    r.visible = true;
+                });
+            }
+
+            updateThrottleUI();
+            showToast('フライト開始！リングをくぐって飛んでみよう', '✈️', false, 2800);
+        }
+
+        // ==========================================
+        // 5. フライト物理更新ループ
+        // ==========================================
+        function updateFlight(dt) {
+            // スロットル調整 (Q / E または Shift / Space)
+            if (input.throttleUp) {
+                flightState.throttle = Math.min(1.0, flightState.throttle + dt * 0.55);
+                updateThrottleUI();
+            }
+            if (input.throttleDown) {
+                flightState.throttle = Math.max(0.0, flightState.throttle - dt * 0.55);
+                updateThrottleUI();
+            }
+
+            if (flightState.isCrashed) {
+                // 着水・衝突後はプロペラをゆっくり止める
+                propellerMesh.rotation.z += dt * 2;
+                return;
+            }
+
+            // ピッチ入力（デフォルト: ↑/W で上昇、上下反転ONなら ↓/S で上昇）
+            let pitchInput = 0;
+            if (input.up) pitchInput += 1;
+            if (input.down) pitchInput -= 1;
+            if (settings.invertPitch) pitchInput = -pitchInput;
+
+            // 左右旋回入力
+            let turnInput = 0;
+            if (input.left) turnInput += 1;
+            if (input.right) turnInput -= 1;
+
+            // 滑走路上で着陸中の処理
+            if (flightState.isLanded) {
+                const targetSpeed = flightState.throttle * 82;
+                flightState.speed += (targetSpeed - flightState.speed) * Math.min(1, dt * 1.8);
+
+                // 地上のゆるやかなステアリング
+                flightState.yaw += turnInput * dt * 0.85 * Math.min(1, flightState.speed / 15);
+                flightState.roll += (0 - flightState.roll) * Math.min(1, dt * 6);
+
+                // 速度が十分あり、上昇入力があれば離陸！
+                if (flightState.speed > 36 && pitchInput > 0) {
+                    flightState.isLanded = false;
+                    flightState.pitch = 0.14;
+                    showToast('離陸しました！', '🛫', false, 2000);
+                } else {
+                    flightState.pitch += (0 - flightState.pitch) * Math.min(1, dt * 6);
+                }
+            } else {
+                // 空中フライト（やさしいアーケード挙動）
+                const pitchSpeed = 1.15;
+                const maxPitch = THREE.MathUtils.degToRad(42);
+
+                if (pitchInput !== 0) {
+                    flightState.pitch += pitchInput * pitchSpeed * dt;
+                } else {
+                    // キーを離すと緩やかに水平へ戻る（操作がとても安定する）
+                    flightState.pitch += (0 - flightState.pitch) * Math.min(1, dt * 1.4);
+                }
+                flightState.pitch = THREE.MathUtils.clamp(flightState.pitch, -maxPitch, maxPitch);
+
+                // 旋回と連動バンク（ロール）
+                const turnSpeed = 1.25;
+                flightState.yaw += turnInput * turnSpeed * dt;
+
+                const targetRoll = turnInput * THREE.MathUtils.degToRad(36);
+                flightState.roll += (targetRoll - flightState.roll) * Math.min(1, dt * 4.5);
+
+                // 速度計算：スロットルが少しでもあれば失速しないやさしい最低巡航速度を保証
+                const minCruise = flightState.throttle > 0.05 ? 28 : 18;
+                const maxSpeed = 95;
+                // 上昇時は少し減速、下降時は少し加速
+                const pitchSpeedEffect = -Math.sin(flightState.pitch) * 14;
+                const targetSpeed = THREE.MathUtils.clamp(
+                    minCruise + flightState.throttle * (maxSpeed - minCruise) + pitchSpeedEffect,
+                    16,
+                    110
+                );
+                flightState.speed += (targetSpeed - flightState.speed) * Math.min(1, dt * 2.0);
+            }
+
+            // 進行方向ベクトルを計算して移動
+            const forward = new THREE.Vector3(
+                -Math.sin(flightState.yaw) * Math.cos(flightState.pitch),
+                Math.sin(flightState.pitch),
+                -Math.cos(flightState.yaw) * Math.cos(flightState.pitch)
+            );
+
+            flightState.position.addScaledVector(forward, flightState.speed * dt);
+
+            // 高度上限（空の果てまで行きすぎないようにゆるやかに制限）
+            if (flightState.position.y > 420) {
+                flightState.position.y = 420;
+                if (flightState.pitch > 0) flightState.pitch *= 0.9;
+            }
+
+            // ワールド端から離れすぎたら緩やかに内側へ戻す（迷子防止）
+            const distFromOrigin = Math.hypot(flightState.position.x, flightState.position.z);
+            if (distFromOrigin > 1700) {
+                const angleToCenter = Math.atan2(-flightState.position.x, -flightState.position.z);
+                flightState.position.x *= 0.998;
+                flightState.position.z *= 0.998;
+                if (distFromOrigin > 1850) {
+                    flightState.yaw = angleToCenter;
+                }
+            }
+
+            // 地形・海面との接触判定
+            const terrain = getTerrainInfo(flightState.position.x, flightState.position.z);
+            const wheelClearance = 1.65;
+
+            if (flightState.position.y <= terrain.height + wheelClearance) {
+                if (terrain.onRunway) {
+                    // 滑走路へのやさしい着陸判定
+                    flightState.position.y = terrain.height + wheelClearance;
+                    if (!flightState.isLanded) {
+                        flightState.isLanded = true;
+                        flightState.pitch = 0;
+                        flightState.roll = 0;
+                        showToast('滑走路に着陸しました！出力を上げて ↑ で再離陸できます', '🛬', false, 3500);
+                    }
+                } else if (terrain.height === 0) {
+                    // 着水
+                    flightState.position.y = 1.1;
+                    flightState.isCrashed = true;
+                    flightState.speed = 0;
+                    playSplashSound();
+                    showToast('着水しました - Rキーまたは再開ボタンでリセット', '🌊', true, 0);
+                } else {
+                    // 島の地面に接触
+                    flightState.position.y = terrain.height + wheelClearance;
+                    flightState.isCrashed = true;
+                    flightState.speed = 0;
+                    playSplashSound();
+                    showToast('島に着地しました - Rキーまたは再開ボタンでリセット', '🏝️', true, 0);
+                }
+            } else {
+                flightState.isLanded = false;
+            }
+
+            // 機体メッシュの姿勢更新 (YXZ順で自然な飛行機姿勢)
+            planeGroup.position.copy(flightState.position);
+            planeGroup.rotation.order = 'YXZ';
+            planeGroup.rotation.y = flightState.yaw;
+            planeGroup.rotation.x = flightState.pitch;
+            planeGroup.rotation.z = flightState.roll;
+
+            // プロペラ回転
+            propellerMesh.rotation.z += dt * (12 + flightState.throttle * 34);
+        }
+
+        // カメラ追従更新
+        function updateCamera(dt) {
+            const cockpitOverlay = document.getElementById('cockpit-overlay');
+
+            if (settings.cameraMode === 'cockpit') {
+                // コックピット視点
+                planeGroup.visible = true;
+                cockpitOverlay.classList.add('visible');
+
+                const localCamPos = new THREE.Vector3(0, 1.05, -1.05);
+                const worldCamPos = localCamPos.applyMatrix4(planeGroup.matrixWorld);
+
+                const localLookTarget = new THREE.Vector3(0, 0.9, -40);
+                const worldLookTarget = localLookTarget.applyMatrix4(planeGroup.matrixWorld);
+
+                camera.position.copy(worldCamPos);
+                camera.lookAt(worldLookTarget);
+            } else {
+                // 後方チェイス視点（ドラッグで周囲を見回せる）
+                planeGroup.visible = true;
+                cockpitOverlay.classList.remove('visible');
+
+                const camYaw = flightState.yaw + cameraOrbit.yawOffset;
+                const camDist = 20;
+                const camHeight = 6.5 + cameraOrbit.pitchOffset * 10;
+
+                const desiredPos = new THREE.Vector3(
+                    flightState.position.x + Math.sin(camYaw) * camDist,
+                    Math.max(2.5, flightState.position.y + camHeight - Math.sin(flightState.pitch) * 6),
+                    flightState.position.z + Math.cos(camYaw) * camDist
+                );
+
+                camera.position.lerp(desiredPos, Math.min(1, dt * 7.5));
+
+                const lookAhead = new THREE.Vector3(
+                    flightState.position.x - Math.sin(flightState.yaw) * 14,
+                    flightState.position.y + 1.2 + Math.sin(flightState.pitch) * 8,
+                    flightState.position.z - Math.cos(flightState.yaw) * 14
+                );
+                camera.lookAt(lookAhead);
+            }
+        }
+
+        // 雲・リング・パーティクル更新
+        function updateWorldElements(dt, elapsed) {
+            // 雲のゆっくりとした漂い
+            clouds.forEach(c => {
+                c.position.x += c.userData.driftSpeed * dt;
+                if (c.position.x > 1300) c.position.x = -1300;
+            });
+
+            // リングのアニメーション＆通過判定
+            rings.forEach(r => {
+                if (r.userData.collected) return;
+                r.position.y = r.userData.baseY + Math.sin(elapsed * 2 + r.userData.phase) * 1.4;
+                r.children[0].rotation.z += dt * 1.1;
+
+                const dist = r.position.distanceTo(flightState.position);
+                if (dist < 15.5) {
+                    r.userData.collected = true;
+                    r.visible = false;
+                    flightState.ringsCollected++;
+                    spawnRingSparkles(r.position);
+
+                    const allDone = flightState.ringsCollected >= flightState.totalRings;
+                    playRingChime(allDone);
+
+                    if (allDone) {
+                        showToast('おめでとう！すべてのリングをクリアしました！🎉', '🏆', true, 6000);
+                    } else {
+                        showToast(`リング通過！ (${flightState.ringsCollected} / ${flightState.totalRings})`, '✨', false, 1800);
+                    }
+                }
+            });
+
+            // パーティクル更新
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.addScaledVector(p.userData.vel, dt);
+                p.userData.life -= dt * 1.4;
+                p.scale.setScalar(Math.max(0.01, p.userData.life));
+                p.material.opacity = Math.max(0, p.userData.life);
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    p.geometry.dispose();
+                    p.material.dispose();
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // ==========================================
+        // 6. HUD更新
+        // ==========================================
+        function updateHUD() {
+            // 速度 (ノット換算風)
+            const knots = Math.round(flightState.speed * 1.75);
+            document.getElementById('hud-speed').textContent = knots;
+
+            // 高度 (メートル)
+            const alt = Math.max(0, Math.round(flightState.position.y - 1.5));
+            document.getElementById('hud-alt').textContent = alt;
+
+            // リング数
+            document.getElementById('hud-rings').textContent = flightState.ringsCollected;
+
+            // 姿勢指示器（人工水平儀）
+            const rollDeg = THREE.MathUtils.radToDeg(flightState.roll);
+            const pitchPx = THREE.MathUtils.radToDeg(flightState.pitch) * 0.7;
+            const horizonEl = document.getElementById('horizon-plane');
+            horizonEl.style.transform = `translateY(${pitchPx}px) rotate(${rollDeg}deg)`;
+
+            // コンパス方位 (0° = N)
+            let heading = Math.round((-THREE.MathUtils.radToDeg(flightState.yaw)) % 360);
+            if (heading < 0) heading += 360;
+            const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            const dirLabel = dirs[Math.round(heading / 45) % 8];
+            const degStr = String(heading).padStart(3, '0');
+            document.getElementById('compass-text').textContent = `${dirLabel} ${degStr}°`;
+        }
+
+        function updateThrottleUI() {
+            const pct = Math.round(flightState.throttle * 100);
+            document.getElementById('hud-throttle').textContent = `${pct}%`;
+            document.getElementById('throttle-fill').style.height = `${pct}%`;
+            document.getElementById('throttle-thumb').style.bottom = `${pct}%`;
+        }
+
+        // ==========================================
+        // 7. 入力イベント設定（キーボード・マウス・タッチ）
+        // ==========================================
+        function setupControls() {
+            // キーボード入力
+            window.addEventListener('keydown', (e) => {
+                switch (e.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        input.up = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        input.down = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        input.left = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        input.right = true;
+                        break;
+                    case 'KeyQ':
+                    case 'ShiftLeft':
+                    case 'ShiftRight':
+                        input.throttleUp = true;
+                        break;
+                    case 'KeyE':
+                    case 'ControlLeft':
+                    case 'ControlRight':
+                        input.throttleDown = true;
+                        break;
+                    case 'KeyC':
+                        toggleCameraMode();
+                        break;
+                    case 'KeyR':
+                        resetFlight(flightState.ringsCollected >= flightState.totalRings);
+                        break;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                switch (e.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        input.up = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        input.down = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        input.left = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        input.right = false;
+                        break;
+                    case 'KeyQ':
+                    case 'ShiftLeft':
+                    case 'ShiftRight':
+                        input.throttleUp = false;
+                        break;
+                    case 'KeyE':
+                    case 'ControlLeft':
+                    case 'ControlRight':
+                        input.throttleDown = false;
+                        break;
+                }
+            });
+
+            // HUDボタンイベント
+            document.getElementById('btn-camera').addEventListener('click', toggleCameraMode);
+            document.getElementById('btn-invert').addEventListener('click', toggleInvertPitch);
+            document.getElementById('btn-sound').addEventListener('click', toggleSound);
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                resetFlight(flightState.ringsCollected >= flightState.totalRings);
+            });
+            document.getElementById('toast-reset-btn').addEventListener('click', () => {
+                resetFlight(flightState.ringsCollected >= flightState.totalRings);
+            });
+
+            // 画面右下のタッチ・マウス操縦パッド
+            document.querySelectorAll('.pad-btn').forEach(btn => {
+                const ctrl = btn.dataset.control;
+                const press = (e) => {
+                    e.preventDefault();
+                    input[ctrl] = true;
+                    btn.classList.add('pressed');
+                };
+                const release = (e) => {
+                    e.preventDefault();
+                    input[ctrl] = false;
+                    btn.classList.remove('pressed');
+                };
+                btn.addEventListener('mousedown', press);
+                btn.addEventListener('mouseup', release);
+                btn.addEventListener('mouseleave', release);
+                btn.addEventListener('touchstart', press, { passive: false });
+                btn.addEventListener('touchend', release, { passive: false });
+                btn.addEventListener('touchcancel', release, { passive: false });
+            });
+
+            // 縦型スロットルスライダー（マウス＆タッチ対応）
+            const track = document.getElementById('throttle-track');
+            let draggingThrottle = false;
+
+            const setThrottleFromClientY = (clientY) => {
+                const rect = track.getBoundingClientRect();
+                const ratio = 1 - (clientY - rect.top) / rect.height;
+                flightState.throttle = THREE.MathUtils.clamp(ratio, 0, 1);
+                updateThrottleUI();
+            };
+
+            track.addEventListener('mousedown', (e) => {
+                draggingThrottle = true;
+                setThrottleFromClientY(e.clientY);
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (draggingThrottle) setThrottleFromClientY(e.clientY);
+            });
+            window.addEventListener('mouseup', () => {
+                draggingThrottle = false;
+            });
+
+            track.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                draggingThrottle = true;
+                setThrottleFromClientY(e.touches[0].clientY);
+            }, { passive: false });
+            window.addEventListener('touchmove', (e) => {
+                if (draggingThrottle && e.touches.length > 0) {
+                    setThrottleFromClientY(e.touches[0].clientY);
+                }
+            }, { passive: false });
+            window.addEventListener('touchend', () => {
+                draggingThrottle = false;
+            });
+
+            // キャンバスのマウスドラッグでカメラ角度を微調整
+            const canvas = renderer.domElement;
+            canvas.addEventListener('mousedown', (e) => {
+                cameraOrbit.isDragging = true;
+                cameraOrbit.prevX = e.clientX;
+                cameraOrbit.prevY = e.clientY;
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (!cameraOrbit.isDragging || settings.cameraMode !== 'third') return;
+                const dx = e.clientX - cameraOrbit.prevX;
+                const dy = e.clientY - cameraOrbit.prevY;
+                cameraOrbit.prevX = e.clientX;
+                cameraOrbit.prevY = e.clientY;
+                cameraOrbit.yawOffset -= dx * 0.006;
+                cameraOrbit.pitchOffset = THREE.MathUtils.clamp(cameraOrbit.pitchOffset + dy * 0.004, -0.35, 0.8);
+            });
+            window.addEventListener('mouseup', () => {
+                cameraOrbit.isDragging = false;
+            });
+
+            // リサイズ対応
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function toggleCameraMode() {
+            settings.cameraMode = settings.cameraMode === 'third' ? 'cockpit' : 'third';
+            const label = document.getElementById('lbl-camera');
+            label.textContent = settings.cameraMode === 'third' ? '後方視点' : 'コックピット';
+            showToast(
+                settings.cameraMode === 'third' ? '後方視点に切り替えました' : 'コックピット視点に切り替えました',
+                '📷',
+                false,
+                1600
+            );
+        }
+
+        function toggleInvertPitch() {
+            settings.invertPitch = !settings.invertPitch;
+            const btn = document.getElementById('btn-invert');
+            const lbl = document.getElementById('lbl-invert');
+            lbl.textContent = settings.invertPitch ? '上下反転: ON' : '上下反転: OFF';
+            btn.classList.toggle('active-toggle', settings.invertPitch);
+            showToast(
+                settings.invertPitch ? '上下反転 ON（↓/S で上昇）' : '上下反転 OFF（↑/W で上昇）',
+                '↕️',
+                false,
+                1800
+            );
+        }
+
+        function toggleSound() {
+            initAudio();
+            if (audio.ctx && audio.ctx.state === 'suspended') {
+                audio.ctx.resume();
+            }
+            settings.soundEnabled = !settings.soundEnabled;
+            const btn = document.getElementById('btn-sound');
+            const icon = document.getElementById('icon-sound');
+            const lbl = document.getElementById('lbl-sound');
+
+            icon.textContent = settings.soundEnabled ? '🔊' : '🔇';
+            lbl.textContent = settings.soundEnabled ? '音声 ON' : '音声 OFF';
+            btn.classList.toggle('active-toggle', settings.soundEnabled);
+        }
+
+        // ==========================================
+        // 8. メインアニメーションループ
+        // ==========================================
+        function animate(timestamp) {
+            requestAnimationFrame(animate);
+
+            const now = timestamp * 0.001;
+            const dt = lastTime ? Math.min(0.05, now - lastTime) : 0.016;
+            lastTime = now;
+
+            updateFlight(dt);
+            planeGroup.updateMatrixWorld(true);
+            updateCamera(dt);
+            updateWorldElements(dt, now);
+            updateEngineSound();
+            updateHUD();
+
+            renderer.render(scene, camera);
+        }
+
+        // ページ読み込み完了後に初期化＆ループ開始
+        window.onload = function () {
+            initScene();
+            setupControls();
+            resetFlight(false);
+            requestAnimationFrame(animate);
+        };
+    </script>
+</body>
+</html>

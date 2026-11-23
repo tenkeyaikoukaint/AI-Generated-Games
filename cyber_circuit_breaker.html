@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>CYBER CIRCUIT BREAKER // 回路ハッキング端末</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #060913;
+      --panel-bg: rgba(12, 19, 36, 0.88);
+      --neon-cyan: #00f3ff;
+      --neon-green: #00ff88;
+      --neon-amber: #ffb700;
+      --neon-pink: #ff2a6d;
+      --grid-line: rgba(0, 243, 255, 0.14);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(0, 243, 255, 0.12) 0%, transparent 60%),
+        linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 28px 28px, 28px 28px;
+      color: #e2f1ff;
+      font-family: 'JetBrains Mono', 'Noto Sans JP', monospace;
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* CRT Scanlines & Vignette */
+    .crt-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.28) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 0, 255, 0.03)
+      );
+      background-size: 100% 3px, 6px 100%;
+    }
+
+    .crt-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 49;
+      box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.85);
+    }
+
+    /* Neon Glow Utilities */
+    .glow-cyan {
+      text-shadow: 0 0 8px rgba(0, 243, 255, 0.7), 0 0 18px rgba(0, 243, 255, 0.4);
+    }
+    .glow-green {
+      text-shadow: 0 0 8px rgba(0, 255, 136, 0.7), 0 0 18px rgba(0, 255, 136, 0.4);
+    }
+    .glow-amber {
+      text-shadow: 0 0 8px rgba(255, 183, 0, 0.7), 0 0 18px rgba(255, 183, 0, 0.4);
+    }
+    .glow-pink {
+      text-shadow: 0 0 8px rgba(255, 42, 109, 0.8), 0 0 18px rgba(255, 42, 109, 0.5);
+    }
+
+    .cyber-panel {
+      background: var(--panel-bg);
+      border: 1px solid rgba(0, 243, 255, 0.3);
+      box-shadow: 0 0 24px rgba(0, 243, 255, 0.08), inset 0 0 15px rgba(0, 243, 255, 0.05);
+      backdrop-filter: blur(8px);
+    }
+
+    /* Cyber Buttons */
+    .cyber-btn {
+      position: relative;
+      background: linear-gradient(135deg, rgba(0, 243, 255, 0.16), rgba(0, 120, 255, 0.12));
+      border: 1px solid var(--neon-cyan);
+      color: var(--neon-cyan);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      transition: all 0.15s ease;
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.25);
+      cursor: pointer;
+    }
+
+    .cyber-btn:hover:not(:disabled) {
+      background: rgba(0, 243, 255, 0.28);
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.6);
+      transform: translateY(-1px);
+    }
+
+    .cyber-btn:active:not(:disabled) {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    .cyber-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .cyber-btn-amber {
+      background: linear-gradient(135deg, rgba(255, 183, 0, 0.2), rgba(255, 100, 0, 0.15));
+      border-color: var(--neon-amber);
+      color: var(--neon-amber);
+      box-shadow: 0 0 14px rgba(255, 183, 0, 0.3);
+    }
+
+    .cyber-btn-amber:hover:not(:disabled) {
+      background: rgba(255, 183, 0, 0.32);
+      box-shadow: 0 0 24px rgba(255, 183, 0, 0.7);
+    }
+
+    .cyber-btn-green {
+      background: linear-gradient(135deg, rgba(0, 255, 136, 0.22), rgba(0, 180, 100, 0.15));
+      border-color: var(--neon-green);
+      color: var(--neon-green);
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.35);
+    }
+
+    .cyber-btn-green:hover:not(:disabled) {
+      background: rgba(0, 255, 136, 0.35);
+      box-shadow: 0 0 25px rgba(0, 255, 136, 0.75);
+    }
+
+    /* Board Grid & Tiles */
+    #board-container {
+      position: relative;
+      width: 100%;
+      max-width: 460px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+    }
+
+    #circuit-grid {
+      display: grid;
+      width: 100%;
+      height: 100%;
+      gap: 4px;
+      padding: 6px;
+      background: rgba(4, 8, 18, 0.95);
+      border: 2px solid rgba(0, 243, 255, 0.45);
+      border-radius: 12px;
+      box-shadow: 0 0 30px rgba(0, 243, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.9);
+    }
+
+    .tile {
+      position: relative;
+      background: rgba(14, 24, 46, 0.85);
+      border: 1px solid rgba(0, 243, 255, 0.18);
+      border-radius: 6px;
+      cursor: pointer;
+      overflow: hidden;
+      transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .tile:hover:not(.locked):not(.firewall):not(.source):not(.target) {
+      border-color: rgba(0, 243, 255, 0.65);
+      background: rgba(20, 36, 68, 0.95);
+    }
+
+    .tile.locked {
+      background: rgba(24, 28, 40, 0.92);
+      border-color: rgba(148, 163, 184, 0.4);
+      cursor: not-allowed;
+    }
+
+    .tile.firewall {
+      background: rgba(45, 10, 22, 0.9);
+      border-color: rgba(255, 42, 109, 0.6);
+      cursor: not-allowed;
+      box-shadow: inset 0 0 12px rgba(255, 42, 109, 0.3);
+    }
+
+    .tile.source {
+      background: rgba(0, 45, 30, 0.95);
+      border-color: var(--neon-green);
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.4), inset 0 0 12px rgba(0, 255, 136, 0.3);
+      cursor: default;
+    }
+
+    .tile.target {
+      background: rgba(45, 32, 0, 0.95);
+      border-color: var(--neon-amber);
+      box-shadow: 0 0 15px rgba(255, 183, 0, 0.4), inset 0 0 12px rgba(255, 183, 0, 0.3);
+      cursor: default;
+    }
+
+    .tile.powered {
+      border-color: var(--neon-green);
+      background: rgba(0, 50, 38, 0.9);
+      box-shadow: inset 0 0 14px rgba(0, 255, 136, 0.35);
+    }
+
+    .tile.target.powered {
+      border-color: var(--neon-green);
+      background: rgba(0, 70, 45, 0.95);
+      box-shadow: 0 0 24px rgba(0, 255, 136, 0.85), inset 0 0 18px rgba(0, 255, 136, 0.6);
+    }
+
+    .tile.short-circuit {
+      border-color: var(--neon-pink) !important;
+      background: rgba(90, 10, 35, 0.95) !important;
+      animation: shake 0.35s ease-in-out;
+    }
+
+    .tile-rotator {
+      width: 100%;
+      height: 100%;
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tile-badge {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-5px); }
+      40% { transform: translateX(5px); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.85; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.08); }
+    }
+
+    .pulse-icon {
+      animation: pulseGlow 1.5s infinite ease-in-out;
+    }
+
+    /* Floating Score Text */
+    .float-text {
+      position: absolute;
+      pointer-events: none;
+      font-weight: 800;
+      font-size: 0.95rem;
+      z-index: 30;
+      animation: floatUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+    }
+
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translate(-50%, 0) scale(0.8); }
+      20% { transform: translate(-50%, -8px) scale(1.1); }
+      100% { opacity: 0; transform: translate(-50%, -36px) scale(0.95); }
+    }
+
+    /* Custom Scrollbar for Legend/Modals */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #060913; }
+    ::-webkit-scrollbar-thumb { background: rgba(0, 243, 255, 0.3); border-radius: 3px; }
+  </style>
+</head>
+<body class="p-2 sm:p-4">
+  <div class="crt-overlay"></div>
+  <div class="crt-vignette"></div>
+
+  <!-- Main Terminal Container -->
+  <div class="w-full max-w-2xl flex flex-col gap-3 z-10">
+    
+    <!-- Top Header Bar -->
+    <header class="cyber-panel rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_10px_#00ff88] animate-pulse"></div>
+        <div>
+          <h1 class="text-base sm:text-xl font-black tracking-wider text-cyan-300 glow-cyan leading-tight">
+            CYBER CIRCUIT BREAKER
+          </h1>
+          <p class="text-[10px] sm:text-xs text-cyan-500/80 tracking-widest">
+            SYS.VER 4.20 // リアルタイム論理回路ハック端末
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-help" class="cyber-btn rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1" title="遊び方・ギミック解説">
+          <span>? ヘルプ</span>
+        </button>
+        <button id="btn-mute" class="cyber-btn rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1" title="サウンド切替">
+          <span id="mute-icon">🔊 ON</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- HUD Telemetry Panel -->
+    <section class="grid grid-cols-4 gap-2">
+      <div class="cyber-panel rounded-xl p-2 sm:p-2.5 text-center">
+        <div class="text-[10px] text-cyan-400/80 font-bold">STAGE</div>
+        <div id="hud-stage" class="text-lg sm:text-2xl font-black text-white">01</div>
+      </div>
+      <div class="cyber-panel rounded-xl p-2 sm:p-2.5 text-center">
+        <div class="text-[10px] text-cyan-400/80 font-bold">SCORE</div>
+        <div id="hud-score" class="text-lg sm:text-2xl font-black text-cyan-300 glow-cyan">0</div>
+      </div>
+      <div class="cyber-panel rounded-xl p-2 sm:p-2.5 text-center">
+        <div class="text-[10px] text-amber-400/90 font-bold">MULTIPLIER</div>
+        <div id="hud-mult" class="text-lg sm:text-2xl font-black text-amber-300 glow-amber">x1.0</div>
+      </div>
+      <div class="cyber-panel rounded-xl p-2 sm:p-2.5 text-center">
+        <div class="text-[10px] text-emerald-400/90 font-bold">HIGH SCORE</div>
+        <div id="hud-high" class="text-lg sm:text-2xl font-black text-emerald-300 glow-green">0</div>
+      </div>
+    </section>
+
+    <!-- Pulse Status & Countdown Progress Bar -->
+    <section class="cyber-panel rounded-xl px-3.5 py-2.5 flex flex-col gap-1.5">
+      <div class="flex items-center justify-between text-xs sm:text-sm font-bold">
+        <div class="flex items-center gap-2">
+          <span id="status-badge" class="px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 text-[11px]">
+            STANDBY
+          </span>
+          <span id="status-text" class="text-slate-200">回路を構築せよ — 電流放出まで待機中</span>
+        </div>
+        <div id="timer-display" class="font-mono text-base sm:text-lg font-black text-cyan-300">
+          15.0s
+        </div>
+      </div>
+      <!-- Progress Bar -->
+      <div class="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-cyan-900/60 p-0.5">
+        <div id="timer-bar" class="h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-amber-300 transition-all duration-75" style="width: 100%;"></div>
+      </div>
+    </section>
+
+    <!-- Main Game Board Wrapper -->
+    <main class="relative flex flex-col items-center justify-center my-0.5">
+      <div id="board-container">
+        <div id="circuit-grid"></div>
+
+        <!-- Overlay Screen (Start / Stage Clear / Game Over) -->
+        <div id="game-overlay" class="absolute inset-0 z-20 rounded-xl bg-slate-950/90 backdrop-blur-md border-2 border-cyan-400/60 flex flex-col items-center justify-center p-5 text-center transition-opacity duration-200">
+          <div id="overlay-tag" class="text-xs font-bold tracking-widest text-emerald-400 mb-1">
+            SYSTEM READY // NEURAL LINK ESTABLISHED
+          </div>
+          <h2 id="overlay-title" class="text-2xl sm:text-3xl font-black text-cyan-300 glow-cyan mb-2">
+            ハッキング開始準備完了
+          </h2>
+          <p id="overlay-desc" class="text-xs sm:text-sm text-slate-300 max-w-sm leading-relaxed mb-4">
+            タイルをクリック（またはタップ）して90度回転させ、<span class="text-emerald-400 font-bold">SRC(電源)</span> から <span class="text-amber-400 font-bold">TGT(目標)</span> まで回路を繋げてください。<br>
+            途中の <span class="text-cyan-300 font-bold">DATAノード</span> や <span class="text-purple-300 font-bold">AMP増幅器</span> を通すと高得点＆時間延長！
+          </p>
+
+          <!-- Dynamic Result Stats Box -->
+          <div id="overlay-stats" class="hidden w-full max-w-xs bg-slate-900/90 border border-cyan-500/30 rounded-lg p-3 mb-4 text-xs space-y-1.5">
+            <div class="flex justify-between">
+              <span class="text-slate-400">基本クリアボーナス:</span>
+              <span id="stat-base" class="text-cyan-300 font-bold">+0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">経由ノード・経路長:</span>
+              <span id="stat-nodes" class="text-emerald-300 font-bold">+0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">オーバークロック速度賞:</span>
+              <span id="stat-speed" class="text-amber-300 font-bold">+0</span>
+            </div>
+            <div class="border-t border-slate-700 pt-1.5 flex justify-between text-sm font-black">
+              <span class="text-white">STAGE TOTAL:</span>
+              <span id="stat-total" class="text-emerald-400 glow-green">+0</span>
+            </div>
+          </div>
+
+          <button id="btn-overlay-action" class="cyber-btn-green rounded-xl px-7 py-3 text-base sm:text-lg font-black tracking-wider shadow-lg">
+            ▶ ハック開始 (START)
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Controls & Gimmick Legend -->
+    <footer class="cyber-panel rounded-xl p-3 flex flex-col gap-2.5">
+      <!-- Action Buttons Row -->
+      <div class="flex flex-wrap items-center justify-center gap-2.5">
+        <button id="btn-overclock" class="cyber-btn-amber rounded-xl px-4 py-2.5 text-xs sm:text-sm flex-1 min-w-[170px] flex items-center justify-center gap-2" disabled>
+          <span>⚡ 電流即時放出 (OVERCLOCK)</span>
+        </button>
+        <button id="btn-rotate-dir" class="cyber-btn rounded-xl px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-center gap-1.5" title="クリック時の回転方向を切り替え">
+          <span id="rotate-dir-label">↻ 右回転モード</span>
+        </button>
+        <button id="btn-restart" class="cyber-btn rounded-xl px-3.5 py-2.5 text-xs sm:text-sm flex items-center justify-center gap-1" title="最初からやり直す">
+          <span>↺ リセット</span>
+        </button>
+      </div>
+
+      <!-- Compact Gimmick Guide -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-1 border-t border-cyan-900/50 text-[11px] text-slate-300">
+        <div class="flex items-center gap-1.5 bg-slate-900/70 rounded px-2 py-1">
+          <span class="text-emerald-400 font-black">⚡SRC</span>
+          <span>電源スタート</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-slate-900/70 rounded px-2 py-1">
+          <span class="text-amber-400 font-black">◎TGT</span>
+          <span>目標ゴール</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-slate-900/70 rounded px-2 py-1">
+          <span class="text-cyan-300 font-black">◆DATA</span>
+          <span>+500pt & +3秒</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-slate-900/70 rounded px-2 py-1">
+          <span class="text-purple-400 font-black">▲AMP</span>
+          <span>倍率 +0.5x</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-slate-900/70 rounded px-2 py-1 col-span-2 sm:col-span-1">
+          <span class="text-rose-400 font-black">✖FW / 🔒</span>
+          <span>遮断 / 固定</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Help Modal -->
+  <div id="help-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="cyber-panel rounded-2xl max-w-md w-full p-5 border-2 border-cyan-400/60 space-y-3">
+      <div class="flex items-center justify-between border-b border-cyan-800/60 pb-2">
+        <h3 class="text-lg font-black text-cyan-300 glow-cyan">📡 ハッキング・マニュアル</h3>
+        <button id="btn-close-help" class="text-slate-400 hover:text-white text-xl font-bold px-2">&times;</button>
+      </div>
+      <div class="text-xs sm:text-sm text-slate-200 space-y-2.5 leading-relaxed max-h-[65vh] overflow-y-auto pr-1">
+        <p><strong class="text-cyan-300">1. 基本ルール：</strong><br>
+        カウントダウンが0になる前に、タイルを回転させて <span class="text-emerald-400 font-bold">SRC(電源)</span> から <span class="text-amber-400 font-bold">TGT(目標)</span> まで一本の回路で繋げてください。右クリックや「回転モード」切替で逆回転も可能です。</p>
+        <p><strong class="text-amber-300">2. 電流放出 & オーバークロック：</strong><br>
+        タイマーが0になると自動で電流パルスが流れ始めます。ルートが完成したら<span class="text-amber-300 font-bold">「⚡ 電流即時放出」</span>を押すと高速で電流が流れ、残り時間に応じた特大タイムボーナスを獲得できます！</p>
+        <p><strong class="text-emerald-300">3. 特殊ノード＆ギミック：</strong><br>
+        ・<span class="text-cyan-300 font-bold">◆ DATAノード</span>：電流を通過させると高得点＆次ステージの制限時間が延長されます。<br>
+        ・<span class="text-purple-400 font-bold">▲ AMP増幅器</span>：通過するたびにスコア倍率がアップします。<br>
+        ・<span class="text-slate-400 font-bold">🔒 ロックタイル</span>：回転できません。あらかじめ配置された向きを活かしましょう。<br>
+        ・<span class="text-rose-400 font-bold">✖ ファイアウォール</span>：電流が触れると即ショート（ゲームオーバー）になります！</p>
+      </div>
+      <div class="pt-2 text-right">
+        <button id="btn-close-help-bottom" class="cyber-btn rounded-lg px-5 py-2 text-xs font-bold">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * CYBER CIRCUIT BREAKER
+     * 単一HTML完結型 サイバーパンク論理回路ハッキングパズル
+     */
+
+    // ==========================================
+    // 1. Web Audio API シンセサイザー効果音エンジン
+    // ==========================================
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+      }
+
+      playTone(freq, type, duration, vol = 0.15, slideTo = null, delay = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime + delay;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (slideTo) {
+          osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+        }
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(vol, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+      }
+
+      // タイル回転音
+      playRotate(ccw = false) {
+        this.playTone(ccw ? 520 : 640, 'triangle', 0.07, 0.14, ccw ? 380 : 880);
+      }
+
+      // ロックタイル警告音
+      playLocked() {
+        this.playTone(150, 'sawtooth', 0.1, 0.12, 110);
+      }
+
+      // 電流ステップ音
+      playPulseStep(stepIndex, isSpecial = false) {
+        const baseFreq = isSpecial ? 780 : 340 + Math.min(stepIndex * 28, 520);
+        this.playTone(baseFreq, 'sine', 0.12, 0.14, baseFreq * 1.15);
+        if (isSpecial) {
+          this.playTone(1170, 'triangle', 0.18, 0.14, 1560, 0.04);
+        }
+      }
+
+      // オーバークロック発動音
+      playOverclock() {
+        this.playTone(300, 'sawtooth', 0.25, 0.15, 1200);
+      }
+
+      // カウントダウン警告ビープ
+      playTick(urgent = false) {
+        this.playTone(urgent ? 980 : 720, 'sine', 0.05, urgent ? 0.12 : 0.06);
+      }
+
+      // ステージクリアファンファーレ
+      playWin() {
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, i) => {
+          this.playTone(freq, 'triangle', 0.28, 0.18, null, i * 0.09);
+        });
+      }
+
+      // ゲームオーバー・ショート音
+      playFail() {
+        this.playTone(220, 'sawtooth', 0.35, 0.2, 65);
+        this.playTone(185, 'square', 0.4, 0.15, 55, 0.1);
+      }
+    }
+
+    const sfx = new SoundEngine();
+
+    // ==========================================
+    // 2. 回路タイル定義 & 方向ユーティリティ
+    // ==========================================
+    // 方向ビットマスク: 0:UP(1), 1:RIGHT(2), 2:DOWN(4), 3:LEFT(8)
+    const DIR = {
+      UP: 0,
+      RIGHT: 1,
+      DOWN: 2,
+      LEFT: 3
+    };
+
+    const DX = [0, 1, 0, -1];
+    const DY = [-1, 0, 1, 0];
+    const OPPOSITE = [2, 3, 0, 1];
+
+    // タイル形状タイプ
+    // connections: 回転0度時点での接続方向配列 [UP, RIGHT, DOWN, LEFT]
+    const TILE_TYPES = {
+      STRAIGHT: { id: 'STRAIGHT', baseConns: [1, 0, 1, 0], maxRot: 2 }, // │
+      ELBOW:    { id: 'ELBOW',    baseConns: [1, 1, 0, 0], maxRot: 4 }, // └
+      TEE:      { id: 'TEE',      baseConns: [1, 1, 1, 0], maxRot: 4 }, // ├
+      CROSS:    { id: 'CROSS',    baseConns: [1, 1, 1, 1], maxRot: 1 }, // ┼
+      SOURCE:   { id: 'SOURCE',   baseConns: [0, 1, 0, 0], maxRot: 4 }, // 電源
+      TARGET:   { id: 'TARGET',   baseConns: [0, 0, 0, 1], maxRot: 4 }, // 目標
+      FIREWALL: { id: 'FIREWALL', baseConns: [0, 0, 0, 0], maxRot: 1 }  // 遮断壁
+    };
+
+    // 回転後の接続配列を取得 (rot: 0, 1, 2, 3 は時計回り90度単位)
+    function getConnections(typeId, rot) {
+      const base = TILE_TYPES[typeId].baseConns;
+      const r = ((rot % 4) + 4) % 4;
+      return [
+        base[(0 - r + 4) % 4],
+        base[(1 - r + 4) % 4],
+        base[(2 - r + 4) % 4],
+        base[(3 - r + 4) % 4]
+      ];
+    }
+
+    // ==========================================
+    // 3. ゲーム状態管理
+    // ==========================================
+    const state = {
+      stage: 1,
+      score: 0,
+      highScore: parseInt(localStorage.getItem('ccb_highscore') || '0', 10),
+      multiplier: 1.0,
+      gridSize: 6,
+      grid: [], // 2D array of tile objects
+      phase: 'IDLE', // 'IDLE' | 'BUILD' | 'FLOWING' | 'RESULT' | 'GAMEOVER'
+      timeLeft: 18.0,
+      maxTime: 18.0,
+      bonusTimeNext: 0,
+      rotateCCW: false,
+      lastTickSec: 99,
+      flowTimer: null,
+      buildTimer: null,
+      lastFrameTime: 0,
+      sourcePos: { x: 0, y: 0 },
+      targetPos: { x: 5, y: 5 }
+    };
+
+    // DOM参照
+    const elGrid = document.getElementById('circuit-grid');
+    const elOverlay = document.getElementById('game-overlay');
+    const elOverlayTag = document.getElementById('overlay-tag');
+    const elOverlayTitle = document.getElementById('overlay-title');
+    const elOverlayDesc = document.getElementById('overlay-desc');
+    const elOverlayStats = document.getElementById('overlay-stats');
+    const elBtnOverlay = document.getElementById('btn-overlay-action');
+
+    const elHudStage = document.getElementById('hud-stage');
+    const elHudScore = document.getElementById('hud-score');
+    const elHudMult = document.getElementById('hud-mult');
+    const elHudHigh = document.getElementById('hud-high');
+
+    const elStatusBadge = document.getElementById('status-badge');
+    const elStatusText = document.getElementById('status-text');
+    const elTimerDisplay = document.getElementById('timer-display');
+    const elTimerBar = document.getElementById('timer-bar');
+
+    const elBtnOverclock = document.getElementById('btn-overclock');
+    const elBtnRotateDir = document.getElementById('btn-rotate-dir');
+    const elRotateDirLabel = document.getElementById('rotate-dir-label');
+
+    // ==========================================
+    // 4. 必ず解けるステージ自動生成アルゴリズム
+    // ==========================================
+    function generateLevel(stageNum) {
+      // ステージ進行でグリッドサイズ拡大 (1-3: 6x6, 4+: 7x7)
+      const size = stageNum >= 4 ? 7 : 6;
+      state.gridSize = size;
+
+      // 制限時間計算 (基本18秒〜段階的にシビアになるが、DATAノードで延長可能)
+      const baseTime = Math.max(11.0, 19.0 - (stageNum - 1) * 0.65);
+      state.maxTime = parseFloat((baseTime + state.bonusTimeNext).toFixed(1));
+      state.timeLeft = state.maxTime;
+      state.bonusTimeNext = 0;
+      state.lastTickSec = Math.ceil(state.timeLeft);
+
+      // ソース（左端ランダム）とターゲット（右端ランダム）の配置
+      const srcY = Math.floor(Math.random() * size);
+      let tgtY = Math.floor(Math.random() * size);
+      if (size <= 6 && srcY === tgtY) {
+        tgtY = (srcY + 3) % size;
+      }
+      state.sourcePos = { x: 0, y: srcY };
+      state.targetPos = { x: size - 1, y: tgtY };
+
+      // 1. まず「必ず到達できる正解ルート」をランダムウォーク/蛇行で生成
+      const path = buildGuaranteedPath(size, state.sourcePos, state.targetPos);
+
+      // 2. 空グリッド初期化
+      const grid = Array.from({ length: size }, (_, y) =>
+        Array.from({ length: size }, (_, x) => ({
+          x,
+          y,
+          type: 'STRAIGHT',
+          rot: 0,
+          visualRot: 0,
+          locked: false,
+          special: null, // 'DATA' | 'AMP' | null
+          powered: false,
+          inSolution: false
+        }))
+      );
+
+      // 3. 正解ルート上のタイル形状を接続方向から決定
+      for (let i = 0; i < path.length; i++) {
+        const curr = path[i];
+        const tile = grid[curr.y][curr.x];
+        tile.inSolution = true;
+
+        if (i === 0) {
+          // SOURCE
+          const next = path[i + 1];
+          const outDir = getDirection(curr, next);
+          tile.type = 'SOURCE';
+          tile.rot = (outDir - DIR.RIGHT + 4) % 4;
+          tile.visualRot = tile.rot * 90;
+          tile.locked = true;
+        } else if (i === path.length - 1) {
+          // TARGET
+          const prev = path[i - 1];
+          const inDir = getDirection(curr, prev);
+          tile.type = 'TARGET';
+          tile.rot = (inDir - DIR.LEFT + 4) % 4;
+          tile.visualRot = tile.rot * 90;
+          tile.locked = true;
+        } else {
+          const prev = path[i - 1];
+          const next = path[i + 1];
+          const d1 = getDirection(curr, prev);
+          const d2 = getDirection(curr, next);
+
+          // 直線かカーブか判定（高ステージではT字や十字も混ぜてダミー分岐を演出）
+          const isStraight = OPPOSITE[d1] === d2;
+          let chosenType = isStraight ? 'STRAIGHT' : 'ELBOW';
+
+          if (stageNum >= 2 && Math.random() < 0.25) {
+            chosenType = Math.random() < 0.7 ? 'TEE' : 'CROSS';
+          }
+
+          tile.type = chosenType;
+          // d1とd2の両方に繋がる正しい回転角を探す
+          const validRots = [];
+          for (let r = 0; r < 4; r++) {
+            const c = getConnections(chosenType, r);
+            if (c[d1] && c[d2]) validRots.push(r);
+          }
+          const correctRot = validRots[Math.floor(Math.random() * validRots.length)];
+
+          // 特殊ノード配置（正解ルート上の途中にDATAやAMPを配置）
+          if (i > 1 && i < path.length - 2) {
+            const roll = Math.random();
+            if (roll < 0.22) {
+              tile.special = 'DATA';
+            } else if (stageNum >= 2 && roll < 0.34) {
+              tile.special = 'AMP';
+            }
+          }
+
+          // ロックタイル判定（ステージ2以降、正解の向きのまま固定された補助タイルを1〜2個配置）
+          const canLock = stageNum >= 2 && !tile.special && chosenType !== 'CROSS' && Math.random() < 0.12;
+          if (canLock) {
+            tile.locked = true;
+            tile.rot = correctRot;
+          } else {
+            // プレイヤーが回すためにランダムに回転させる
+            const scramble = (correctRot + 1 + Math.floor(Math.random() * 3)) % 4;
+            tile.rot = scramble;
+          }
+          tile.visualRot = tile.rot * 90;
+        }
+      }
+
+      // 4. 正解ルート以外の空きマスを埋める（デコイ回路・ファイアウォール・追加DATAノード）
+      const firewallQuota = stageNum === 1 ? 1 : Math.min(Math.floor(stageNum * 1.2), size + 2);
+      let firewallsPlaced = 0;
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const tile = grid[y][x];
+          if (tile.inSolution) continue;
+
+          // ソースとターゲットの目の前はファイアウォールにしない
+          const distSrc = Math.abs(x - state.sourcePos.x) + Math.abs(y - state.sourcePos.y);
+          const distTgt = Math.abs(x - state.targetPos.x) + Math.abs(y - state.targetPos.y);
+
+          if (firewallsPlaced < firewallQuota && distSrc > 1 && distTgt > 1 && Math.random() < 0.28) {
+            tile.type = 'FIREWALL';
+            tile.locked = true;
+            firewallsPlaced++;
+          } else {
+            const pool = ['STRAIGHT', 'ELBOW', 'ELBOW', 'TEE', 'CROSS'];
+            tile.type = pool[Math.floor(Math.random() * pool.length)];
+            tile.rot = Math.floor(Math.random() * 4);
+            tile.visualRot = tile.rot * 90;
+
+            // 寄り道ルート用ボーナスノード
+            if (Math.random() < 0.14) {
+              tile.special = Math.random() < 0.7 ? 'DATA' : 'AMP';
+            }
+          }
+        }
+      }
+
+      state.grid = grid;
+    }
+
+    // 2点間の隣接方向インデックスを取得
+    function getDirection(from, to) {
+      if (to.x > from.x) return DIR.RIGHT;
+      if (to.x < from.x) return DIR.LEFT;
+      if (to.y > from.y) return DIR.DOWN;
+      return DIR.UP;
+    }
+
+    // ソースからターゲットまでの非交差パスを生成
+    function buildGuaranteedPath(size, start, end) {
+      // 深さ優先探索で程よく蛇行するパスを見つける
+      const targetMinLen = size + 3;
+
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const visited = Array.from({ length: size }, () => Array(size).fill(false));
+        const path = [];
+
+        function dfs(x, y) {
+          visited[y][x] = true;
+          path.push({ x, y });
+
+          if (x === end.x && y === end.y) {
+            return path.length >= targetMinLen;
+          }
+
+          // 優先方向をシャッフル（右方向をやや優先しつつ上下にも蛇行させる）
+          const dirs = [0, 1, 2, 3].sort(() => Math.random() - 0.45);
+          for (const d of dirs) {
+            const nx = x + DX[d];
+            const ny = y + DY[d];
+            if (nx >= 0 && nx < size && ny >= 0 && ny < size && !visited[ny][nx]) {
+              // ゴール以外は右端列に早めに入りすぎないよう制御
+              if (nx === size - 1 && ny !== end.y && Math.random() < 0.6) continue;
+              if (dfs(nx, ny)) return true;
+            }
+          }
+
+          path.pop();
+          visited[y][x] = false;
+          return false;
+        }
+
+        if (dfs(start.x, start.y)) {
+          return path;
+        }
+      }
+
+      // フォールバック：シンプルなマンハッタン経路
+      const fallback = [];
+      let cx = start.x;
+      let cy = start.y;
+      fallback.push({ x: cx, y: cy });
+      const midX = Math.floor(size / 2);
+      while (cx < midX) { cx++; fallback.push({ x: cx, y: cy }); }
+      while (cy !== end.y) { cy += cy < end.y ? 1 : -1; fallback.push({ x: cx, y: cy }); }
+      while (cx < end.x) { cx++; fallback.push({ x: cx, y: cy }); }
+      return fallback;
+    }
+
+    // ==========================================
+    // 5. SVG 描画 & 盤面レンダリング
+    // ==========================================
+    function createTileSVG(tile) {
+      const conns = TILE_TYPES[tile.type].baseConns; // [UP, RIGHT, DOWN, LEFT]
+      const strokeColor = tile.powered ? '#00ff88' : '#00f3ff';
+      const coreColor = tile.powered ? '#ffffff' : '#00f3ff';
+
+      if (tile.type === 'FIREWALL') {
+        return `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <rect x="18" y="18" width="64" height="64" rx="8" fill="rgba(255,42,109,0.18)" stroke="#ff2a6d" stroke-width="4" stroke-dasharray="8 4"/>
+            <path d="M32 32 L68 68 M68 32 L32 68" stroke="#ff2a6d" stroke-width="7" stroke-linecap="round"/>
+          </svg>
+        `;
+      }
+
+      let paths = '';
+      // 中心から各方向へのパイプ線（baseConns基準で描き、親divのCSS transformで回転させる）
+      if (conns[DIR.UP])    paths += `<line x1="50" y1="50" x2="50" y2="0" stroke="${strokeColor}" stroke-width="14" stroke-linecap="butt"/>`;
+      if (conns[DIR.RIGHT]) paths += `<line x1="50" y1="50" x2="100" y2="50" stroke="${strokeColor}" stroke-width="14" stroke-linecap="butt"/>`;
+      if (conns[DIR.DOWN])  paths += `<line x1="50" y1="50" x2="50" y2="100" stroke="${strokeColor}" stroke-width="14" stroke-linecap="butt"/>`;
+      if (conns[DIR.LEFT])  paths += `<line x1="50" y1="50" x2="0" y2="50" stroke="${strokeColor}" stroke-width="14" stroke-linecap="butt"/>`;
+
+      // 中心の明るいコアライン
+      let innerPaths = '';
+      if (conns[DIR.UP])    innerPaths += `<line x1="50" y1="50" x2="50" y2="0" stroke="${coreColor}" stroke-width="4"/>`;
+      if (conns[DIR.RIGHT]) innerPaths += `<line x1="50" y1="50" x2="100" y2="50" stroke="${coreColor}" stroke-width="4"/>`;
+      if (conns[DIR.DOWN])  innerPaths += `<line x1="50" y1="50" x2="50" y2="100" stroke="${coreColor}" stroke-width="4"/>`;
+      if (conns[DIR.LEFT])  innerPaths += `<line x1="50" y1="50" x2="0" y2="50" stroke="${coreColor}" stroke-width="4"/>`;
+
+      // ジョイントハブ
+      const hub = `<circle cx="50" cy="50" r="9" fill="#081226" stroke="${strokeColor}" stroke-width="4"/>`;
+
+      return `
+        <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-[0_0_5px_rgba(0,243,255,0.5)]">
+          ${paths}
+          ${innerPaths}
+          ${hub}
+        </svg>
+      `;
+    }
+
+    function createBadgeHTML(tile) {
+      if (tile.type === 'SOURCE') {
+        return `
+          <div class="tile-badge">
+            <div class="px-1.5 py-0.5 rounded bg-emerald-950/90 border border-emerald-400 text-emerald-300 font-black text-[10px] sm:text-xs shadow-[0_0_10px_#00ff88] pulse-icon">
+              ⚡SRC
+            </div>
+          </div>
+        `;
+      }
+      if (tile.type === 'TARGET') {
+        return `
+          <div class="tile-badge">
+            <div class="px-1.5 py-0.5 rounded bg-amber-950/90 border border-amber-400 text-amber-300 font-black text-[10px] sm:text-xs shadow-[0_0_10px_#ffb700] pulse-icon">
+              ◎TGT
+            </div>
+          </div>
+        `;
+      }
+      if (tile.special === 'DATA') {
+        return `
+          <div class="tile-badge">
+            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-cyan-950/95 border-2 border-cyan-300 flex items-center justify-center text-cyan-200 font-black text-[10px] shadow-[0_0_10px_#00f3ff]">
+              ◆
+            </div>
+          </div>
+        `;
+      }
+      if (tile.special === 'AMP') {
+        return `
+          <div class="tile-badge">
+            <div class="w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-purple-950/95 border-2 border-purple-400 flex items-center justify-center text-purple-200 font-black text-[10px] shadow-[0_0_10px_#c084fc]">
+              ▲
+            </div>
+          </div>
+        `;
+      }
+      if (tile.locked && tile.type !== 'FIREWALL') {
+        return `
+          <div class="tile-badge items-end justify-end p-1">
+            <span class="text-[10px] opacity-80">🔒</span>
+          </div>
+        `;
+      }
+      return '';
+    }
+
+    function renderBoard() {
+      const size = state.gridSize;
+      elGrid.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+      elGrid.style.gridTemplateRows = `repeat(${size}, minmax(0, 1fr))`;
+      elGrid.innerHTML = '';
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const tile = state.grid[y][x];
+          const cell = document.createElement('div');
+          cell.className = 'tile';
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+
+          if (tile.locked) cell.classList.add('locked');
+          if (tile.type === 'FIREWALL') cell.classList.add('firewall');
+          if (tile.type === 'SOURCE') cell.classList.add('source');
+          if (tile.type === 'TARGET') cell.classList.add('target');
+          if (tile.powered) cell.classList.add('powered');
+
+          const rotator = document.createElement('div');
+          rotator.className = 'tile-rotator';
+          rotator.style.transform = `rotate(${tile.visualRot}deg)`;
+          rotator.innerHTML = createTileSVG(tile);
+
+          cell.appendChild(rotator);
+          cell.insertAdjacentHTML('beforeend', createBadgeHTML(tile));
+
+          // 左クリック / タップで回転
+          cell.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleTileRotate(x, y, state.rotateCCW);
+          });
+
+          // 右クリックで逆回転
+          cell.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            handleTileRotate(x, y, !state.rotateCCW);
+          });
+
+          elGrid.appendChild(cell);
+        }
+      }
+    }
+
+    function updateTileElement(x, y) {
+      const size = state.gridSize;
+      const idx = y * size + x;
+      const cell = elGrid.children[idx];
+      if (!cell) return;
+
+      const tile = state.grid[y][x];
+      cell.classList.toggle('powered', tile.powered);
+
+      const rotator = cell.querySelector('.tile-rotator');
+      if (rotator) {
+        rotator.style.transform = `rotate(${tile.visualRot}deg)`;
+        rotator.innerHTML = createTileSVG(tile);
+      }
+    }
+
+    // ==========================================
+    // 6. プレイヤー操作 & リアルタイム進行
+    // ==========================================
+    function handleTileRotate(x, y, ccw = false) {
+      if (state.phase !== 'BUILD') return;
+
+      const tile = state.grid[y][x];
+      if (tile.locked || tile.type === 'FIREWALL' || tile.type === 'SOURCE' || tile.type === 'TARGET') {
+        sfx.playLocked();
+        return;
+      }
+
+      if (ccw) {
+        tile.rot = (tile.rot + 3) % 4;
+        tile.visualRot -= 90;
+      } else {
+        tile.rot = (tile.rot + 1) % 4;
+        tile.visualRot += 90;
+      }
+
+      sfx.playRotate(ccw);
+      updateTileElement(x, y);
+    }
+
+    function showFloatingText(x, y, text, colorClass = 'text-cyan-300') {
+      const size = state.gridSize;
+      const idx = y * size + x;
+      const cell = elGrid.children[idx];
+      if (!cell) return;
+
+      const rect = cell.getBoundingClientRect();
+      const boardRect = document.getElementById('board-container').getBoundingClientRect();
+
+      const el = document.createElement('div');
+      el.className = `float-text ${colorClass}`;
+      el.textContent = text;
+      el.style.left = `${rect.left - boardRect.left + rect.width / 2}px`;
+      el.style.top = `${rect.top - boardRect.top + rect.height / 3}px`;
+
+      document.getElementById('board-container').appendChild(el);
+      setTimeout(() => el.remove(), 950);
+    }
+
+    // ゲーム開始 / 次ステージ開始
+    function startStage() {
+      sfx.init();
+      generateLevel(state.stage);
+      renderBoard();
+      updateHUD();
+
+      state.phase = 'BUILD';
+      elOverlay.classList.add('opacity-0', 'pointer-events-none');
+      elBtnOverclock.disabled = false;
+
+      setStatus('ACTIVE', '回路を接続せよ — タイムアウト前に完了しろ', 'cyan');
+
+      state.lastFrameTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function gameLoop(now) {
+      if (state.phase !== 'BUILD') return;
+
+      const dt = (now - state.lastFrameTime) / 1000;
+      state.lastFrameTime = now;
+
+      state.timeLeft = Math.max(0, state.timeLeft - dt);
+      updateTimerUI();
+
+      // 残り5秒からカウントダウン音
+      const ceilSec = Math.ceil(state.timeLeft);
+      if (ceilSec <= 5 && ceilSec > 0 && ceilSec < state.lastTickSec) {
+        sfx.playTick(ceilSec <= 3);
+      }
+      state.lastTickSec = ceilSec;
+
+      if (state.timeLeft <= 0) {
+        // 時間切れで自動電流放出開始
+        startPulseFlow(false);
+        return;
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function updateTimerUI() {
+      elTimerDisplay.textContent = `${state.timeLeft.toFixed(1)}s`;
+      const pct = Math.max(0, Math.min(100, (state.timeLeft / state.maxTime) * 100));
+      elTimerBar.style.width = `${pct}%`;
+
+      if (state.timeLeft <= 4.0) {
+        elTimerDisplay.className = 'font-mono text-base sm:text-lg font-black text-rose-400 glow-pink';
+        elTimerBar.className = 'h-full rounded-full bg-gradient-to-r from-rose-500 to-amber-400 transition-all duration-75';
+      } else {
+        elTimerDisplay.className = 'font-mono text-base sm:text-lg font-black text-cyan-300';
+        elTimerBar.className = 'h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-amber-300 transition-all duration-75';
+      }
+    }
+
+    // ==========================================
+    // 7. 電流パルスシミュレーション（波面伝播）
+    // ==========================================
+    function startPulseFlow(isOverclock = false) {
+      if (state.phase !== 'BUILD') return;
+      state.phase = 'FLOWING';
+      elBtnOverclock.disabled = true;
+
+      const savedTime = state.timeLeft;
+      if (isOverclock) {
+        sfx.playOverclock();
+        setStatus('OVERCLOCK', '高圧電流パルス強制放出中！！', 'amber');
+      } else {
+        setStatus('SURGE', 'タイムアウト — 電流パルス自動放出開始！', 'pink');
+      }
+
+      const stepInterval = isOverclock ? 95 : 190;
+      const size = state.gridSize;
+
+      // ソースを起点に通電開始
+      const srcTile = state.grid[state.sourcePos.y][state.sourcePos.x];
+      srcTile.powered = true;
+      updateTileElement(srcTile.x, srcTile.y);
+
+      let frontier = [srcTile];
+      let stepCount = 0;
+      let nodesCollected = 0;
+      let ampsCollected = 0;
+      let totalPoweredTiles = 1;
+
+      state.flowTimer = setInterval(() => {
+        stepCount++;
+        const nextFrontier = [];
+        let reachedTarget = false;
+        let hitDeadEndOrFirewall = false;
+        let failTile = null;
+
+        for (const curr of frontier) {
+          const outConns = getConnections(curr.type, curr.rot);
+
+          for (let d = 0; d < 4; d++) {
+            if (!outConns[d]) continue; // この方向に出口がない
+
+            const nx = curr.x + DX[d];
+            const ny = curr.y + DY[d];
+
+            // 盤面外へ電流が漏れた場合はショート！
+            if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+              hitDeadEndOrFirewall = true;
+              failTile = curr;
+              break;
+            }
+
+            const neighbor = state.grid[ny][nx];
+
+            // ファイアウォールに接触したら即ショート！
+            if (neighbor.type === 'FIREWALL') {
+              hitDeadEndOrFirewall = true;
+              failTile = neighbor;
+              break;
+            }
+
+            // 隣接タイルの入口が繋がっているか確認
+            const inConns = getConnections(neighbor.type, neighbor.rot);
+            if (!inConns[OPPOSITE[d]]) {
+              // 行き止まり（繋がっていないタイルに電流が流れた） -> ショート！
+              hitDeadEndOrFirewall = true;
+              failTile = curr;
+              break;
+            }
+
+            if (!neighbor.powered) {
+              neighbor.powered = true;
+              totalPoweredTiles++;
+              updateTileElement(nx, ny);
+
+              // 特殊ギミック判定
+              if (neighbor.special === 'DATA') {
+                nodesCollected++;
+                state.bonusTimeNext += 3.0;
+                showFloatingText(nx, ny, 'DATA +500 / +3s', 'text-cyan-300');
+              } else if (neighbor.special === 'AMP') {
+                ampsCollected++;
+                state.multiplier = parseFloat((state.multiplier + 0.5).toFixed(1));
+                updateHUD();
+                showFloatingText(nx, ny, 'AMP x+0.5!', 'text-purple-300');
+              }
+
+              if (neighbor.type === 'TARGET') {
+                reachedTarget = true;
+              } else {
+                nextFrontier.push(neighbor);
+              }
+            }
+          }
+          if (hitDeadEndOrFirewall) break;
+        }
+
+        // ショート（失敗）判定
+        if (hitDeadEndOrFirewall) {
+          clearInterval(state.flowTimer);
+          if (failTile) {
+            const idx = failTile.y * size + failTile.x;
+            const cell = elGrid.children[idx];
+            if (cell) cell.classList.add('short-circuit');
+          }
+          triggerGameOver('回路ショート発生！電流が漏洩またはファイアウォールに接触しました。');
+          return;
+        }
+
+        // ターゲット到達判定
+        if (reachedTarget) {
+          clearInterval(state.flowTimer);
+          sfx.playPulseStep(stepCount, true);
+          setTimeout(() => {
+            triggerStageClear(savedTime, totalPoweredTiles, nodesCollected, isOverclock);
+          }, 320);
+          return;
+        }
+
+        // まだ進めるタイルがないのにターゲット未到達の場合
+        if (nextFrontier.length === 0) {
+          clearInterval(state.flowTimer);
+          triggerGameOver('目標ノード(TGT)に電流が到達しませんでした。');
+          return;
+        }
+
+        const hasSpecial = nextFrontier.some(t => t.special);
+        sfx.playPulseStep(stepCount, hasSpecial);
+        frontier = nextFrontier;
+
+      }, stepInterval);
+    }
+
+    // ==========================================
+    // 8. クリア & ゲームオーバー処理
+    // ==========================================
+    function triggerStageClear(savedTime, poweredCount, nodesCount, isOverclock) {
+      state.phase = 'RESULT';
+      sfx.playWin();
+
+      const baseBonus = state.stage * 500;
+      const nodeBonus = (nodesCount * 500) + (poweredCount * 40);
+      const speedBonus = isOverclock ? Math.round(savedTime * 120) : Math.round(savedTime * 40);
+
+      const rawTotal = baseBonus + nodeBonus + speedBonus;
+      const finalStagePoints = Math.round(rawTotal * state.multiplier);
+
+      state.score += finalStagePoints;
+      if (state.score > state.highScore) {
+        state.highScore = state.score;
+        localStorage.setItem('ccb_highscore', String(state.highScore));
+      }
+      updateHUD();
+
+      setStatus('BREACHED', `STAGE ${String(state.stage).padStart(2, '0')} セキュリティ突破成功！`, 'green');
+
+      // 結果オーバーレイ表示
+      elOverlayTag.textContent = 'ACCESS GRANTED // FIREWALL BYPASSED';
+      elOverlayTag.className = 'text-xs font-bold tracking-widest text-emerald-400 mb-1';
+      elOverlayTitle.textContent = `STAGE ${String(state.stage).padStart(2, '0')} CLEAR!`;
+      elOverlayTitle.className = 'text-2xl sm:text-3xl font-black text-emerald-300 glow-green mb-2';
+      elOverlayDesc.textContent = state.bonusTimeNext > 0
+        ? `DATAノード回収により、次ステージの制限時間が +${state.bonusTimeNext.toFixed(1)}秒 延長されます！`
+        : 'システム深層へのアクセス権を取得しました。次のセキュリティ層へ進行します。';
+
+      document.getElementById('stat-base').textContent = `+${baseBonus.toLocaleString()}`;
+      document.getElementById('stat-nodes').textContent = `+${nodeBonus.toLocaleString()}`;
+      document.getElementById('stat-speed').textContent = `+${speedBonus.toLocaleString()} (x${state.multiplier.toFixed(1)})`;
+      document.getElementById('stat-total').textContent = `+${finalStagePoints.toLocaleString()}`;
+      elOverlayStats.classList.remove('hidden');
+
+      elBtnOverlay.textContent = `▶ 次のステージへ (STAGE ${String(state.stage + 1).padStart(2, '0')})`;
+      elBtnOverlay.className = 'cyber-btn-green rounded-xl px-7 py-3 text-base sm:text-lg font-black tracking-wider shadow-lg';
+
+      state.stage++;
+      elOverlay.classList.remove('opacity-0', 'pointer-events-none');
+    }
+
+    function triggerGameOver(reason) {
+      state.phase = 'GAMEOVER';
+      sfx.playFail();
+
+      setStatus('TERMINATED', '接続強制切断 — ハッキング失敗', 'pink');
+
+      elOverlayTag.textContent = 'SYSTEM ALERT // INTRUSION DETECTED';
+      elOverlayTag.className = 'text-xs font-bold tracking-widest text-rose-400 mb-1';
+      elOverlayTitle.textContent = 'HACK FAILED';
+      elOverlayTitle.className = 'text-2xl sm:text-3xl font-black text-rose-400 glow-pink mb-2';
+      elOverlayDesc.innerHTML = `${reason}<br><span class="text-cyan-300 font-bold mt-1 inline-block">最終到達: STAGE ${String(state.stage).padStart(2, '0')} / スコア: ${state.score.toLocaleString()}</span>`;
+
+      elOverlayStats.classList.add('hidden');
+      elBtnOverlay.textContent = '↺ もう一度ハックする (RETRY)';
+      elBtnOverlay.className = 'cyber-btn-amber rounded-xl px-7 py-3 text-base sm:text-lg font-black tracking-wider shadow-lg';
+
+      // リトライ用に初期化準備
+      state.stage = 1;
+      state.score = 0;
+      state.multiplier = 1.0;
+      state.bonusTimeNext = 0;
+
+      elOverlay.classList.remove('opacity-0', 'pointer-events-none');
+    }
+
+    function updateHUD() {
+      elHudStage.textContent = String(state.stage).padStart(2, '0');
+      elHudScore.textContent = state.score.toLocaleString();
+      elHudMult.textContent = `x${state.multiplier.toFixed(1)}`;
+      elHudHigh.textContent = state.highScore.toLocaleString();
+    }
+
+    function setStatus(badge, text, color) {
+      elStatusBadge.textContent = badge;
+      elStatusText.textContent = text;
+
+      const styles = {
+        cyan: 'px-2 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 text-[11px]',
+        amber: 'px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-300 text-[11px]',
+        green: 'px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/60 text-emerald-300 text-[11px]',
+        pink: 'px-2 py-0.5 rounded bg-rose-500/25 border border-rose-400/60 text-rose-300 text-[11px]'
+      };
+      elStatusBadge.className = styles[color] || styles.cyan;
+    }
+
+    // ==========================================
+    // 9. イベントリスナー登録
+    // ==========================================
+    elBtnOverlay.addEventListener('click', () => {
+      startStage();
+    });
+
+    elBtnOverclock.addEventListener('click', () => {
+      if (state.phase === 'BUILD') {
+        startPulseFlow(true);
+      }
+    });
+
+    elBtnRotateDir.addEventListener('click', () => {
+      state.rotateCCW = !state.rotateCCW;
+      elRotateDirLabel.textContent = state.rotateCCW ? '↺ 左回転モード' : '↻ 右回転モード';
+      sfx.playRotate(state.rotateCCW);
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      if (state.flowTimer) clearInterval(state.flowTimer);
+      state.stage = 1;
+      state.score = 0;
+      state.multiplier = 1.0;
+      state.bonusTimeNext = 0;
+      startStage();
+    });
+
+    document.getElementById('btn-mute').addEventListener('click', () => {
+      const isMuted = sfx.toggleMute();
+      document.getElementById('mute-icon').textContent = isMuted ? '🔇 OFF' : '🔊 ON';
+    });
+
+    // ヘルプモーダル制御
+    const elHelpModal = document.getElementById('help-modal');
+    document.getElementById('btn-help').addEventListener('click', () => {
+      elHelpModal.classList.remove('hidden');
+    });
+    document.getElementById('btn-close-help').addEventListener('click', () => {
+      elHelpModal.classList.add('hidden');
+    });
+    document.getElementById('btn-close-help-bottom').addEventListener('click', () => {
+      elHelpModal.classList.add('hidden');
+    });
+
+    // キーボードショートカット（Spaceでオーバークロック、Rで回転方向切替）
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (state.phase === 'BUILD') {
+          startPulseFlow(true);
+        } else if (state.phase === 'IDLE' || state.phase === 'RESULT' || state.phase === 'GAMEOVER') {
+          startStage();
+        }
+      } else if (e.key === 'r' || e.key === 'R') {
+        elBtnRotateDir.click();
+      }
+    });
+
+    // 初期表示セットアップ
+    window.onload = () => {
+      updateHUD();
+      generateLevel(1);
+      renderBoard();
+    };
+  </script>
+</body>
+</html>

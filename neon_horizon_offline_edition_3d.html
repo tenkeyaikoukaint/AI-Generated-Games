@@ -1,0 +1,2491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEON HORIZON: OFFLINE EDITION</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #05020d;
+      color: #e8f8ff;
+      font-family: "Noto Sans CJK JP", "TakaoPGothic", "IPAPGothic", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    }
+
+    /* 画面全体のレイアウト（上下バー＋中央キャンバス） */
+    #app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 100%;
+      padding: 8px 12px;
+      background-color: #05020d;
+    }
+
+    /* 上部コントロールバー */
+    #topBar {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 12px;
+      background-color: #0d0720;
+      border: 1px solid #2b235a;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: monospace, sans-serif;
+      font-weight: 900;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      color: #00f0ff;
+    }
+
+    .brand-tag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: #290c33;
+      border: 1px solid #ff2aa4;
+      color: #ff7ac6;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ctrl-btn {
+      padding: 6px 11px;
+      border-radius: 7px;
+      border: 1px solid #00c8d6;
+      background-color: #121030;
+      color: #d8fbff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .ctrl-btn:hover {
+      background-color: #1d2654;
+    }
+
+    .ctrl-btn:active {
+      background-color: #008899;
+      color: #ffffff;
+    }
+
+    .ctrl-btn.off {
+      border-color: #ff2aa4;
+      color: #ff99cc;
+    }
+
+    /* キャンバス中央領域 */
+    #stageArea {
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 0;
+    }
+
+    #canvasFrame {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #2e2568;
+      border-radius: 12px;
+      background-color: #04010c;
+      overflow: hidden;
+      box-shadow: 0 0 18px rgba(0, 240, 255, 0.22);
+    }
+
+    #gameCanvas {
+      display: block;
+      background-color: #04010c;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    /* キャンバス上のオーバーレイ（タイトル / 一時停止 / ゲームオーバー） */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      background-color: rgba(5, 2, 16, 0.78);
+      z-index: 10;
+    }
+
+    .overlay.visible {
+      display: flex;
+    }
+
+    .panel {
+      width: 100%;
+      max-width: 440px;
+      background-color: #0e0824;
+      border: 2px solid #00d9ff;
+      border-radius: 14px;
+      padding: 20px 22px;
+      text-align: center;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
+    }
+
+    .panel.danger {
+      border-color: #ff2aa4;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background-color: #2b0b34;
+      border: 1px solid #ff2aa4;
+      color: #ff8cd0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .title-main {
+      margin: 0;
+      font-family: monospace, sans-serif;
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: #00f0ff;
+    }
+
+    .title-sub {
+      margin: 4px 0 14px;
+      font-size: 12px;
+      color: #c8ecff;
+      line-height: 1.5;
+    }
+
+    .help-box {
+      background-color: #070416;
+      border: 1px solid #282454;
+      border-radius: 10px;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .help-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 3px 0;
+      border-bottom: 1px solid #1a1638;
+    }
+
+    .help-row:last-child {
+      border-bottom: none;
+    }
+
+    .help-k {
+      color: #00f0ff;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .help-v {
+      color: #f0f8ff;
+      text-align: right;
+    }
+
+    .tip-line {
+      margin-top: 7px;
+      font-size: 11px;
+      color: #ffdd44;
+      line-height: 1.45;
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #7cf7ff;
+      border-radius: 10px;
+      background: linear-gradient(90deg, #ff1e8e, #6d28d9, #00c8e6);
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+    }
+
+    .action-btn:hover {
+      border-color: #ffffff;
+    }
+
+    .action-btn:active {
+      opacity: 0.88;
+    }
+
+    .sub-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 9px 14px;
+      border-radius: 9px;
+      border: 1px solid #444080;
+      background-color: #161233;
+      color: #cfefff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .sub-btn:hover {
+      background-color: #221d4d;
+    }
+
+    .hi-line {
+      margin-top: 10px;
+      font-family: monospace, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ff99d6;
+    }
+
+    .stats-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 14px;
+    }
+
+    .stat-box {
+      flex: 1 1 45%;
+      background-color: #070416;
+      border: 1px solid #282454;
+      border-radius: 9px;
+      padding: 8px;
+    }
+
+    .stat-box.full {
+      flex: 1 1 100%;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #8be9fd;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .stat-val {
+      font-family: monospace, sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-top: 2px;
+    }
+
+    .new-rec {
+      display: none;
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background-color: #3b2d00;
+      border: 1px solid #ffdd44;
+      color: #ffdd44;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .new-rec.visible {
+      display: inline-block;
+    }
+
+    /* 下部ステータス＆操作ガイドバー */
+    #bottomBar {
+      width: 100%;
+      max-width: 960px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 12px;
+      background-color: #0d0720;
+      border: 1px solid #2b235a;
+      border-radius: 10px;
+      font-size: 12px;
+      color: #b7d7f0;
+      flex-shrink: 0;
+    }
+
+    .key-pill {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background-color: #1c1740;
+      border: 1px solid #3f3880;
+      color: #00f0ff;
+      font-family: monospace, sans-serif;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    #boostTouchBtn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 2px solid #00f0ff;
+      background-color: #21104a;
+      color: #ffffff;
+      font-weight: 900;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+    }
+
+    #boostTouchBtn:active {
+      background-color: #00aacc;
+    }
+
+    @media (max-width: 640px) {
+      .brand { font-size: 12px; }
+      .ctrl-btn { padding: 5px 8px; font-size: 11px; }
+      .title-main { font-size: 21px; }
+      .panel { padding: 14px 14px; }
+      #bottomBar { font-size: 11px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 上部コントロールバー -->
+    <div id="topBar">
+      <div class="brand">
+        <span>NEON HORIZON</span>
+        <span class="brand-tag">OFFLINE 2D</span>
+      </div>
+      <div class="btn-row">
+        <button id="pauseBtn" class="ctrl-btn" type="button">一時停止 (P)</button>
+        <button id="autoBtn" class="ctrl-btn" type="button">オート射撃: ON (F)</button>
+        <button id="muteBtn" class="ctrl-btn" type="button">サウンド: ON (M)</button>
+        <button id="restartTopBtn" class="ctrl-btn" type="button">リスタート</button>
+      </div>
+    </div>
+
+    <!-- 中央ゲーム画面（固定800x480をアスペクト比維持でスケーリング） -->
+    <div id="stageArea">
+      <div id="canvasFrame">
+        <canvas id="gameCanvas" width="800" height="480"></canvas>
+
+        <!-- タイトル画面 -->
+        <div id="titleOverlay" class="overlay visible">
+          <div class="panel">
+            <div class="badge">完全オフライン・軽量Canvas 2D版</div>
+            <h1 class="title-main">NEON HORIZON</h1>
+            <p class="title-sub">疑似3Dネオン空間を駆け抜け、ドローンと巨大ボスを撃破せよ！</p>
+
+            <div class="help-box">
+              <div class="help-row">
+                <span class="help-k">移動</span>
+                <span class="help-v">矢印キー / WASD（マウス・タッチも対応）</span>
+              </div>
+              <div class="help-row">
+                <span class="help-k">射撃</span>
+                <span class="help-v">Space / Z（初期設定オート射撃ON）</span>
+              </div>
+              <div class="help-row">
+                <span class="help-k">ブースト突進</span>
+                <span class="help-v">Shift / X（無敵＆柱・敵を体当たり粉砕）</span>
+              </div>
+              <div class="help-row">
+                <span class="help-k">その他</span>
+                <span class="help-v">P: 一時停止 / M: ミュート / F: オート切替</span>
+              </div>
+              <div class="tip-line">
+                ★ 柱や敵弾をギリギリ回避すると <strong>GRAZE!</strong> ボーナス＆ブースト回復。<br />
+                ★ 光るリングをくぐると高得点＆ブースト回復！25秒ごとにボス出現！
+              </div>
+            </div>
+
+            <button id="startBtn" class="action-btn" type="button">ゲーム開始 (ENTER)</button>
+            <div class="hi-line">ハイスコア: <span id="titleHiScore">000000</span></div>
+          </div>
+        </div>
+
+        <!-- 一時停止画面 -->
+        <div id="pauseOverlay" class="overlay">
+          <div class="panel">
+            <div class="badge">PAUSED</div>
+            <h2 class="title-main" style="font-size:24px;">一時停止中</h2>
+            <p class="title-sub">Pキーまたは下のボタンで再開します。</p>
+            <button id="resumeBtn" class="action-btn" type="button">ゲームを再開 (P)</button>
+            <button id="pauseTitleBtn" class="sub-btn" type="button">タイトル画面へ戻る</button>
+          </div>
+        </div>
+
+        <!-- ゲームオーバー画面 -->
+        <div id="overOverlay" class="overlay">
+          <div class="panel danger">
+            <div class="badge" style="color:#ff66aa;">MISSION FAILED</div>
+            <h2 class="title-main" style="color:#ff4fa8;">GAME OVER</h2>
+
+            <div class="stats-grid">
+              <div class="stat-box full">
+                <div class="stat-label">最終スコア</div>
+                <div id="overScore" class="stat-val">000000</div>
+                <div id="newRecBadge" class="new-rec">NEW HIGH SCORE!</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">ハイスコア</div>
+                <div id="overHiScore" class="stat-val" style="font-size:16px;color:#ff99d6;">000000</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-label">到達ウェーブ</div>
+                <div id="overWave" class="stat-val" style="font-size:16px;color:#ffdd44;">WAVE 1</div>
+              </div>
+            </div>
+
+            <button id="retryBtn" class="action-btn" type="button">もう一度プレイ (ENTER)</button>
+            <button id="overTitleBtn" class="sub-btn" type="button">タイトル画面へ戻る</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 下部ガイド＆タッチ用ブーストボタン -->
+    <div id="bottomBar">
+      <div>
+        <span class="key-pill">WASD / 矢印</span> 移動
+        &nbsp;|&nbsp;
+        <span class="key-pill">Space / Z</span> 射撃
+        &nbsp;|&nbsp;
+        <span class="key-pill">Shift / X</span> ブースト
+        &nbsp;|&nbsp;
+        <span class="key-pill">P</span> 一時停止
+        &nbsp;|&nbsp;
+        <span class="key-pill">M</span> ミュート
+      </div>
+      <button id="boostTouchBtn" type="button">BOOST発動 (Shift/X)</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. 定数（Lubuntu 18.04 LTS 軽量・安全設計）
+      // =========================================================================
+      var CANVAS_W = 800;
+      var CANVAS_H = 480;
+      var NEAR_Z = 12;          // z <= 12 は必ずカリング（ゼロ除算・反転防止）
+      var FOV = 390;            // 透視投影の視野係数
+      var MAX_Z = 1750;         // 遠方クリップ距離
+      var PLAYER_Z = 150;       // プレイヤー機体の固定Z座標
+      var WORLD_LIMIT_X = 210;  // 左右の移動限界
+      var WORLD_MIN_Y = 24;     // 地面すれすれの下限高度
+      var WORLD_MAX_Y = 180;    // 上限高度
+      var BOSS_INTERVAL = 25;   // 25秒ごとにウェーブボス出現
+      var MAX_PARTICLES = 80;   // GCスパイク防止の固定パーティクルプール数
+      var MAX_POPUPS = 16;      // 固定ポップアップテキストプール数
+      var STORAGE_KEY = 'neon_horizon_offline_hi_v1';
+
+      // ウェーブごとの3カラーテーマ
+      var THEMES = [
+        {
+          name: 'CYAN-MAGENTA',
+          skyTop: '#050114',
+          skyMid: '#1b083b',
+          skyHorizon: '#a8186c',
+          groundTop: '#16052e',
+          groundBottom: '#060212',
+          bandFill: 'rgba(135, 36, 255, 0.18)',
+          gridX: '#e02890',
+          gridZ: 'rgba(0, 235, 255, 0.34)',
+          horizon: '#ff2aa4',
+          sunTop: '#fff480',
+          sunMid: '#ff8038',
+          sunBottom: '#ff1e8e',
+          accent: '#00f0ff',
+          pillar: '#ff2aa4',
+          pillarDark: '#26083a'
+        },
+        {
+          name: 'SUNSET-VIOLET',
+          skyTop: '#0f031c',
+          skyMid: '#3d0e47',
+          skyHorizon: '#e85d26',
+          groundTop: '#24082b',
+          groundBottom: '#0a0314',
+          bandFill: 'rgba(255, 110, 40, 0.16)',
+          gridX: '#ff8833',
+          gridZ: 'rgba(186, 90, 255, 0.36)',
+          horizon: '#ff7b29',
+          sunTop: '#fff799',
+          sunMid: '#ff9628',
+          sunBottom: '#d91c7a',
+          accent: '#ffaa33',
+          pillar: '#bf4dff',
+          pillarDark: '#24093b'
+        },
+        {
+          name: 'EMERALD-GOLD',
+          skyTop: '#02120f',
+          skyMid: '#07362d',
+          skyHorizon: '#b89422',
+          groundTop: '#062620',
+          groundBottom: '#020c0a',
+          bandFill: 'rgba(34, 255, 153, 0.14)',
+          gridX: '#ffd43b',
+          gridZ: 'rgba(34, 255, 153, 0.35)',
+          horizon: '#22ff99',
+          sunTop: '#ffffff',
+          sunMid: '#ffdf4d',
+          sunBottom: '#10b981',
+          accent: '#22ff99',
+          pillar: '#ffdd33',
+          pillarDark: '#1c2b0a'
+        }
+      ];
+
+      // =========================================================================
+      // 2. DOM要素の取得 & キャンバス設定
+      // =========================================================================
+      var canvas = document.getElementById('gameCanvas');
+      var ctx = canvas.getContext('2d');
+      var stageArea = document.getElementById('stageArea');
+      var canvasFrame = document.getElementById('canvasFrame');
+
+      var titleOverlay = document.getElementById('titleOverlay');
+      var pauseOverlay = document.getElementById('pauseOverlay');
+      var overOverlay = document.getElementById('overOverlay');
+
+      var titleHiScore = document.getElementById('titleHiScore');
+      var overScore = document.getElementById('overScore');
+      var overHiScore = document.getElementById('overHiScore');
+      var overWave = document.getElementById('overWave');
+      var newRecBadge = document.getElementById('newRecBadge');
+
+      var startBtn = document.getElementById('startBtn');
+      var retryBtn = document.getElementById('retryBtn');
+      var resumeBtn = document.getElementById('resumeBtn');
+      var pauseTitleBtn = document.getElementById('pauseTitleBtn');
+      var overTitleBtn = document.getElementById('overTitleBtn');
+
+      var pauseBtn = document.getElementById('pauseBtn');
+      var autoBtn = document.getElementById('autoBtn');
+      var muteBtn = document.getElementById('muteBtn');
+      var restartTopBtn = document.getElementById('restartTopBtn');
+      var boostTouchBtn = document.getElementById('boostTouchBtn');
+
+      // テーマごとの背景グラデーションを事前生成（毎フレーム生成を避けて高速化）
+      var cachedThemeGrads = [];
+      function buildThemeGradients() {
+        var horizonY = Math.floor(CANVAS_H * 0.42);
+        var i;
+        cachedThemeGrads = [];
+        for (i = 0; i < THEMES.length; i++) {
+          var t = THEMES[i];
+          var sky = ctx.createLinearGradient(0, -100, 0, horizonY);
+          sky.addColorStop(0, t.skyTop);
+          sky.addColorStop(0.62, t.skyMid);
+          sky.addColorStop(1, t.skyHorizon);
+
+          var gnd = ctx.createLinearGradient(0, horizonY, 0, CANVAS_H + 100);
+          gnd.addColorStop(0, t.groundTop);
+          gnd.addColorStop(1, t.groundBottom);
+
+          var sunR = 68;
+          var sunY = horizonY - sunR * 0.36;
+          var sun = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+          sun.addColorStop(0, t.sunTop);
+          sun.addColorStop(0.5, t.sunMid);
+          sun.addColorStop(1, t.sunBottom);
+
+          cachedThemeGrads.push({ sky: sky, gnd: gnd, sun: sun });
+        }
+      }
+
+      // 800x480のアスペクト比を維持してウィンドウ内にフィット（旧Firefox 60互換）
+      function fitCanvasToViewport() {
+        var availW = Math.max(240, stageArea.clientWidth - 8);
+        var availH = Math.max(150, stageArea.clientHeight - 8);
+        var ratio = CANVAS_W / CANVAS_H;
+        var dispW = availW;
+        var dispH = Math.floor(dispW / ratio);
+
+        if (dispH > availH) {
+          dispH = availH;
+          dispW = Math.floor(dispH * ratio);
+        }
+
+        canvas.style.width = dispW + 'px';
+        canvas.style.height = dispH + 'px';
+        canvasFrame.style.width = (dispW + 4) + 'px';
+        canvasFrame.style.height = (dispH + 4) + 'px';
+      }
+
+      // =========================================================================
+      // 3. 安全なローカルストレージ & ミニマルWeb Audioシンセサイザー
+      // =========================================================================
+      function loadHiScore() {
+        try {
+          var v = window.localStorage.getItem(STORAGE_KEY);
+          var n = parseInt(v, 10);
+          return (isFinite(n) && n > 0) ? n : 0;
+        } catch (e) {
+          return 0;
+        }
+      }
+
+      function saveHiScore(val) {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, String(Math.floor(val)));
+        } catch (e) {
+          // file:// プロトコル等で制限されても安全に無視
+        }
+      }
+
+      var audioCtx = null;
+      var audioMuted = false;
+
+      function unlockAudio() {
+        try {
+          if (!audioCtx) {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) {
+              audioCtx = new AC();
+            }
+          }
+          if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+        } catch (e) {
+          audioCtx = null;
+        }
+      }
+
+      function playTone(type, f1, f2, dur, vol) {
+        if (audioMuted || !audioCtx) return;
+        try {
+          var now = audioCtx.currentTime;
+          var osc = audioCtx.createOscillator();
+          var gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(Math.max(25, f1), now);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(25, f2), now + dur);
+          gain.gain.setValueAtTime(vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now);
+          osc.stop(now + dur + 0.01);
+        } catch (e) {}
+      }
+
+      function playNoiseExplosion(big) {
+        if (audioMuted || !audioCtx) return;
+        try {
+          var now = audioCtx.currentTime;
+          var dur = big ? 0.42 : 0.2;
+          var len = Math.max(1, Math.floor(audioCtx.sampleRate * dur));
+          var buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+          var data = buf.getChannelData(0);
+          var i;
+          for (i = 0; i < len; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+          }
+          var src = audioCtx.createBufferSource();
+          src.buffer = buf;
+
+          var gain = audioCtx.createGain();
+          gain.gain.setValueAtTime(big ? 0.2 : 0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+          src.connect(gain);
+          gain.connect(audioCtx.destination);
+          src.start(now);
+
+          playTone('sine', big ? 130 : 100, 32, dur, big ? 0.18 : 0.1);
+        } catch (e) {}
+      }
+
+      function sfxShoot() {
+        playTone('triangle', 840, 210, 0.07, 0.07);
+      }
+
+      function sfxGraze() {
+        playTone('sine', 1150, 1600, 0.1, 0.09);
+      }
+
+      function sfxRing() {
+        playTone('triangle', 660, 1320, 0.16, 0.1);
+      }
+
+      function sfxBoost() {
+        playTone('sawtooth', 170, 880, 0.24, 0.1);
+      }
+
+      function sfxHit() {
+        playTone('square', 175, 50, 0.22, 0.14);
+      }
+
+      function sfxWarning() {
+        playTone('sawtooth', 480, 260, 0.24, 0.1);
+      }
+
+      // =========================================================================
+      // 4. ゲーム状態・プール・エンティティ
+      // =========================================================================
+      var STATE_TITLE = 0;
+      var STATE_PLAYING = 1;
+      var STATE_PAUSED = 2;
+      var STATE_GAMEOVER = 3;
+
+      var gameState = STATE_TITLE;
+      var autoFire = true;
+      var hiScore = loadHiScore();
+      var score = 0;
+      var wave = 1;
+      var waveTimer = 0;
+      var combo = 0;
+      var comboTimer = 0;
+      var worldSpeed = 620;
+      var groundScroll = 0;
+      var timeElapsed = 0;
+      var warningTimer = 0;
+      var gameOverLock = 0;
+
+      // FPS計測用
+      var fpsFrames = 0;
+      var fpsAccum = 0;
+      var fpsDisplay = 60;
+
+      var camera = {
+        x: 0,
+        y: 110,
+        roll: 0,
+        shake: 0,
+        horizonY: Math.floor(CANVAS_H * 0.42)
+      };
+
+      var player = {
+        x: 0,
+        y: 78,
+        z: PLAYER_Z,
+        vx: 0,
+        vy: 0,
+        hp: 5,
+        maxHp: 5,
+        invuln: 0,
+        boostEnergy: 100,
+        boostTimer: 0,
+        fireCooldown: 0,
+        bank: 0
+      };
+
+      var keys = {};
+      var pointer = {
+        active: false,
+        down: false,
+        targetX: 0,
+        targetY: 78
+      };
+
+      // エンティティ配列
+      var pillars = [];
+      var drones = [];
+      var rings = [];
+      var bullets = [];
+      var enemyOrbs = [];
+      var boss = null;
+      var renderList = []; // 毎フレーム再利用してGC削減
+
+      // スポーンタイマー
+      var pillarTimer = 0.8;
+      var droneTimer = 1.6;
+      var ringTimer = 3.2;
+
+      // 事前割り当てパーティクルプール
+      var particlePool = [];
+      var pi;
+      for (pi = 0; pi < MAX_PARTICLES; pi++) {
+        particlePool.push({
+          active: false,
+          x: 0, y: 0, z: 0,
+          vx: 0, vy: 0, vz: 0,
+          size: 5,
+          color: '#ffffff',
+          life: 0,
+          maxLife: 0.5
+        });
+      }
+
+      // 事前割り当てポップアッププール
+      var popupPool = [];
+      for (pi = 0; pi < MAX_POPUPS; pi++) {
+        popupPool.push({
+          active: false,
+          text: '',
+          x: 0, y: 0, z: 100,
+          color: '#00f0ff',
+          size: 16,
+          life: 0,
+          maxLife: 0.8
+        });
+      }
+
+      // 背景星データ（軽量64個）
+      var stars = [];
+      for (pi = 0; pi < 64; pi++) {
+        stars.push({
+          x: Math.random() * CANVAS_W,
+          y: Math.random() * (camera.horizonY - 12),
+          size: (pi % 3 === 0) ? 2 : 1,
+          phase: Math.random() * 6.28
+        });
+      }
+
+      // =========================================================================
+      // 5. ユーティリティ & 安全な3D透視投影
+      // =========================================================================
+      function getThemeIndex() {
+        return (wave - 1) % THEMES.length;
+      }
+
+      function getTheme() {
+        return THEMES[getThemeIndex()];
+      }
+
+      function pad6(n) {
+        var s = String(Math.max(0, Math.floor(n)));
+        while (s.length < 6) {
+          s = '0' + s;
+        }
+        return s;
+      }
+
+      function dist2D(dx, dy) {
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      // z <= NEAR_Z は必ず null を返す安全設計
+      function project(wx, wy, wz) {
+        if (wz <= NEAR_Z) return null;
+        var scale = FOV / wz;
+        return {
+          sx: CANVAS_W * 0.5 + (wx - camera.x) * scale,
+          sy: camera.horizonY + (camera.y - wy) * scale,
+          scale: scale
+        };
+      }
+
+      function safeLineWidth(w) {
+        ctx.lineWidth = w < 0.5 ? 0.5 : w;
+      }
+
+      function safeArc(x, y, r) {
+        ctx.arc(x, y, r < 0.5 ? 0.5 : r, 0, 6.2831853);
+      }
+
+      // =========================================================================
+      // 6. プール生成・スコア・アクション関数
+      // =========================================================================
+      function spawnExplosion(wx, wy, wz, color, count, speedMult) {
+        var spawned = 0;
+        var i;
+        var safeZ = wz < NEAR_Z + 6 ? NEAR_Z + 6 : wz;
+        for (i = 0; i < MAX_PARTICLES && spawned < count; i++) {
+          var p = particlePool[i];
+          if (!p.active) {
+            var a = Math.random() * 6.2831853;
+            var b = (Math.random() - 0.5) * 3.14159;
+            var spd = (75 + Math.random() * 175) * speedMult;
+            p.active = true;
+            p.x = wx;
+            p.y = wy;
+            p.z = safeZ;
+            p.vx = Math.cos(a) * Math.cos(b) * spd;
+            p.vy = Math.sin(b) * spd + 30;
+            p.vz = Math.sin(a) * Math.cos(b) * spd;
+            p.size = 4 + Math.random() * 6;
+            p.color = (spawned % 3 === 0) ? '#ffffff' : color;
+            p.life = 0.28 + Math.random() * 0.32;
+            p.maxLife = p.life;
+            spawned++;
+          }
+        }
+      }
+
+      function spawnPopup(text, wx, wy, wz, color, size) {
+        var i;
+        var safeZ = wz < NEAR_Z + 18 ? NEAR_Z + 18 : wz;
+        for (i = 0; i < MAX_POPUPS; i++) {
+          var p = popupPool[i];
+          if (!p.active) {
+            p.active = true;
+            p.text = text;
+            p.x = wx;
+            p.y = wy;
+            p.z = safeZ;
+            p.color = color || '#00f0ff';
+            p.size = size || 16;
+            p.life = 0.85;
+            p.maxLife = 0.85;
+            return;
+          }
+        }
+      }
+
+      function addScore(base, incCombo) {
+        if (incCombo) {
+          combo++;
+          comboTimer = 3.2;
+        }
+        var mult = 1 + Math.min(combo, 30) * 0.1;
+        var pts = Math.round(base * mult);
+        score += pts;
+        if (score > hiScore) {
+          hiScore = Math.floor(score);
+        }
+        return pts;
+      }
+
+      function activateBoost() {
+        if (gameState !== STATE_PLAYING) return;
+        if (player.boostTimer <= 0 && player.boostEnergy >= 30) {
+          player.boostTimer = 1.15;
+          player.boostEnergy = Math.max(0, player.boostEnergy - 35);
+          camera.shake = Math.max(camera.shake, 7);
+          sfxBoost();
+          spawnPopup('BOOST!!', player.x, player.y + 34, player.z + 18, '#00f0ff', 18);
+        }
+      }
+
+      function fireLaser() {
+        if (player.fireCooldown > 0) return;
+        player.fireCooldown = 0.14;
+        sfxShoot();
+        bullets.push({
+          x: player.x,
+          y: player.y + 4,
+          z: player.z + 24,
+          vz: 2050,
+          color: getTheme().accent
+        });
+      }
+
+      function damagePlayer() {
+        if (player.invuln > 0 || player.boostTimer > 0) return;
+        player.hp--;
+        player.invuln = 1.45;
+        combo = 0;
+        comboTimer = 0;
+        camera.shake = 15;
+        sfxHit();
+        spawnExplosion(player.x, player.y, player.z, '#ff3366', 14, 1.0);
+        spawnPopup('DAMAGE!', player.x, player.y + 32, player.z + 12, '#ff4d6d', 18);
+
+        if (player.hp <= 0) {
+          triggerGameOver();
+        }
+      }
+
+      // =========================================================================
+      // 7. ゲーム状態遷移（開始・一時停止・ゲームオーバー）
+      // =========================================================================
+      function resetGame() {
+        var i;
+        score = 0;
+        wave = 1;
+        waveTimer = 0;
+        combo = 0;
+        comboTimer = 0;
+        worldSpeed = 620;
+        warningTimer = 0;
+        gameOverLock = 0;
+
+        player.x = 0;
+        player.y = 78;
+        player.z = PLAYER_Z;
+        player.vx = 0;
+        player.vy = 0;
+        player.hp = player.maxHp;
+        player.invuln = 0;
+        player.boostEnergy = 100;
+        player.boostTimer = 0;
+        player.fireCooldown = 0;
+        player.bank = 0;
+
+        camera.x = 0;
+        camera.y = 110;
+        camera.roll = 0;
+        camera.shake = 0;
+
+        pillars.length = 0;
+        drones.length = 0;
+        rings.length = 0;
+        bullets.length = 0;
+        enemyOrbs.length = 0;
+        boss = null;
+
+        for (i = 0; i < MAX_PARTICLES; i++) particlePool[i].active = false;
+        for (i = 0; i < MAX_POPUPS; i++) popupPool[i].active = false;
+
+        pillarTimer = 0.7;
+        droneTimer = 1.5;
+        ringTimer = 3.0;
+
+        pointer.active = false;
+        pointer.down = false;
+      }
+
+      function hideAllOverlays() {
+        titleOverlay.className = 'overlay';
+        pauseOverlay.className = 'overlay';
+        overOverlay.className = 'overlay';
+      }
+
+      function startGame() {
+        unlockAudio();
+        resetGame();
+        gameState = STATE_PLAYING;
+        hideAllOverlays();
+        pauseBtn.textContent = '一時停止 (P)';
+      }
+
+      function showTitle() {
+        gameState = STATE_TITLE;
+        hideAllOverlays();
+        titleHiScore.textContent = pad6(hiScore);
+        titleOverlay.className = 'overlay visible';
+        pauseBtn.textContent = '一時停止 (P)';
+      }
+
+      function togglePause() {
+        if (gameState === STATE_PLAYING) {
+          gameState = STATE_PAUSED;
+          pauseOverlay.className = 'overlay visible';
+          pauseBtn.textContent = '再開 (P)';
+        } else if (gameState === STATE_PAUSED) {
+          gameState = STATE_PLAYING;
+          pauseOverlay.className = 'overlay';
+          pauseBtn.textContent = '一時停止 (P)';
+        }
+      }
+
+      function triggerGameOver() {
+        gameState = STATE_GAMEOVER;
+        gameOverLock = 0.5;
+        playNoiseExplosion(true);
+
+        var isNew = false;
+        if (score >= hiScore && score > 0) {
+          hiScore = Math.floor(score);
+          saveHiScore(hiScore);
+          isNew = true;
+        }
+
+        overScore.textContent = pad6(score);
+        overHiScore.textContent = pad6(hiScore);
+        overWave.textContent = 'WAVE ' + wave;
+        titleHiScore.textContent = pad6(hiScore);
+        newRecBadge.className = isNew ? 'new-rec visible' : 'new-rec';
+
+        hideAllOverlays();
+        overOverlay.className = 'overlay visible';
+      }
+
+      // =========================================================================
+      // 8. 敵・障害物・ボス生成
+      // =========================================================================
+      function spawnPillar() {
+        pillars.push({
+          x: (Math.random() * 2 - 1) * (WORLD_LIMIT_X - 18),
+          z: MAX_Z,
+          width: 30,
+          height: 105 + Math.random() * 105,
+          grazed: false,
+          color: getTheme().pillar,
+          dark: getTheme().pillarDark
+        });
+      }
+
+      function spawnDrone() {
+        var bx = (Math.random() * 2 - 1) * (WORLD_LIMIT_X - 40);
+        var by = 52 + Math.random() * 108;
+        var hp = 2 + Math.floor((wave - 1) * 0.5);
+        drones.push({
+          x: bx,
+          y: by,
+          baseX: bx,
+          baseY: by,
+          z: MAX_Z,
+          radius: 24,
+          hp: hp,
+          phase: Math.random() * 6.28,
+          ampX: 34 + Math.random() * 52,
+          ampY: 14 + Math.random() * 24,
+          fireTimer: 0.9 + Math.random() * 0.8,
+          hitFlash: 0,
+          color: (Math.random() < 0.5) ? '#ff2aa4' : '#a855f7'
+        });
+      }
+
+      function spawnRing() {
+        rings.push({
+          x: (Math.random() * 2 - 1) * (WORLD_LIMIT_X - 50),
+          y: 54 + Math.random() * 102,
+          z: MAX_Z,
+          radius: 34,
+          rot: 0,
+          collected: false
+        });
+      }
+
+      function spawnBoss() {
+        var names = ['OVERLORD-01', 'VALKYRIE-X', 'HYPERION-MK3', 'OMEGA HORIZON'];
+        var maxHp = 24 + (wave - 1) * 12;
+        boss = {
+          name: names[(wave - 1) % names.length],
+          x: 0,
+          y: 116,
+          z: MAX_Z + 100,
+          targetZ: 740,
+          hp: maxHp,
+          maxHp: maxHp,
+          phase: 0,
+          attackTimer: 1.9,
+          telegraph: 0,
+          hitFlash: 0,
+          dead: false
+        };
+        warningTimer = 2.4;
+        sfxWarning();
+      }
+
+      // =========================================================================
+      // 9. メイン更新処理（dtは最大0.05秒にクランプ済み）
+      // =========================================================================
+      function update(dt) {
+        var i, j, k;
+        timeElapsed += dt;
+
+        if (gameOverLock > 0) {
+          gameOverLock = Math.max(0, gameOverLock - dt);
+        }
+
+        if (gameState === STATE_PAUSED) {
+          return;
+        }
+
+        var activeSpeed = (gameState === STATE_PLAYING)
+          ? worldSpeed * (player.boostTimer > 0 ? 1.8 : 1.0)
+          : 420;
+
+        groundScroll = (groundScroll + activeSpeed * dt) % 200;
+
+        if (gameState !== STATE_PLAYING) {
+          camera.x = Math.sin(timeElapsed * 0.55) * 62;
+          camera.y = 112 + Math.cos(timeElapsed * 0.4) * 10;
+          camera.roll = -Math.cos(timeElapsed * 0.55) * 0.02;
+          return;
+        }
+
+        if (warningTimer > 0) {
+          warningTimer = Math.max(0, warningTimer - dt);
+        }
+
+        // ---- プレイヤー移動 ----
+        var maxSpdX = 420;
+        var maxSpdY = 350;
+        var kx = 0;
+        var ky = 0;
+        if (keys['ArrowLeft'] || keys['KeyA'] || keys['a'] || keys['A']) kx -= 1;
+        if (keys['ArrowRight'] || keys['KeyD'] || keys['d'] || keys['D']) kx += 1;
+        if (keys['ArrowUp'] || keys['KeyW'] || keys['w'] || keys['W']) ky += 1;
+        if (keys['ArrowDown'] || keys['KeyS'] || keys['s'] || keys['S']) ky -= 1;
+
+        if (kx !== 0 || ky !== 0) {
+          pointer.active = false;
+          var klen = dist2D(kx, ky) || 1;
+          var tvx = (kx / klen) * maxSpdX;
+          var tvy = (ky / klen) * maxSpdY;
+          var lerpK = Math.min(1, dt * 14);
+          player.vx += (tvx - player.vx) * lerpK;
+          player.vy += (tvy - player.vy) * lerpK;
+        } else if (pointer.active) {
+          var dxp = pointer.targetX - player.x;
+          var dyp = pointer.targetY - player.y;
+          player.vx = Math.max(-maxSpdX * 1.2, Math.min(maxSpdX * 1.2, dxp * 10));
+          player.vy = Math.max(-maxSpdY * 1.2, Math.min(maxSpdY * 1.2, dyp * 10));
+        } else {
+          var damp = Math.pow(0.002, dt);
+          player.vx *= damp;
+          player.vy *= damp;
+        }
+
+        player.x = Math.max(-WORLD_LIMIT_X, Math.min(WORLD_LIMIT_X, player.x + player.vx * dt));
+        player.y = Math.max(WORLD_MIN_Y, Math.min(WORLD_MAX_Y, player.y + player.vy * dt));
+
+        var targetBank = Math.max(-0.4, Math.min(0.4, player.vx * 0.00085));
+        player.bank += (targetBank - player.bank) * Math.min(1, dt * 12);
+
+        if (player.invuln > 0) player.invuln = Math.max(0, player.invuln - dt);
+        if (player.fireCooldown > 0) player.fireCooldown = Math.max(0, player.fireCooldown - dt);
+
+        if (player.boostTimer > 0) {
+          player.boostTimer = Math.max(0, player.boostTimer - dt);
+        } else {
+          player.boostEnergy = Math.min(100, player.boostEnergy + dt * 12);
+        }
+
+        if (combo > 0) {
+          comboTimer -= dt;
+          if (comboTimer <= 0) combo = 0;
+        }
+
+        // 射撃（オート射撃 / Space / Z / マウス押下）
+        if (autoFire || keys['Space'] || keys['KeyZ'] || keys['z'] || keys['Z'] || pointer.down) {
+          fireLaser();
+        }
+
+        // カメラ追従
+        var targetCamX = player.x * 0.45;
+        var targetCamY = 92 + player.y * 0.36;
+        var targetRoll = -player.vx * 0.00018;
+        var camLerp = Math.min(1, dt * 8);
+        camera.x += (targetCamX - camera.x) * camLerp;
+        camera.y += (targetCamY - camera.y) * camLerp;
+        camera.roll += (targetRoll - camera.roll) * Math.min(1, dt * 7);
+        if (camera.shake > 0) camera.shake = Math.max(0, camera.shake - dt * 38);
+
+        // 走行スコア＆ウェーブ進行
+        worldSpeed = 620 + (wave - 1) * 85;
+        score += dt * (40 + wave * 12) * (player.boostTimer > 0 ? 1.8 : 1.0);
+        if (score > hiScore) hiScore = Math.floor(score);
+
+        if (!boss) {
+          waveTimer += dt;
+          if (waveTimer >= BOSS_INTERVAL) {
+            spawnBoss();
+          }
+        }
+
+        // スポーン管理
+        pillarTimer -= dt;
+        if (pillarTimer <= 0) {
+          spawnPillar();
+          var pBase = Math.max(0.45, 0.98 - (wave - 1) * 0.08);
+          pillarTimer = boss ? pBase * 1.9 : pBase * (0.75 + Math.random() * 0.45);
+        }
+
+        droneTimer -= dt;
+        if (droneTimer <= 0) {
+          if (!boss || drones.length < 1) {
+            spawnDrone();
+          }
+          var dBase = Math.max(0.75, 1.55 - (wave - 1) * 0.12);
+          droneTimer = boss ? 3.5 : dBase * (0.8 + Math.random() * 0.45);
+        }
+
+        ringTimer -= dt;
+        if (ringTimer <= 0) {
+          spawnRing();
+          ringTimer = 4.2 + Math.random() * 2.4;
+        }
+
+        // ---- プレイヤー弾更新 ----
+        for (i = bullets.length - 1; i >= 0; i--) {
+          var b = bullets[i];
+          b.z += b.vz * dt;
+          if (b.z > MAX_Z + 50) {
+            bullets.splice(i, 1);
+          }
+        }
+
+        // ---- ネオン柱更新 & 当たり判定 ----
+        for (i = pillars.length - 1; i >= 0; i--) {
+          var ob = pillars[i];
+          ob.z -= activeSpeed * dt;
+
+          // プレイヤー弾が柱に当たった場合
+          for (j = bullets.length - 1; j >= 0; j--) {
+            var bl = bullets[j];
+            if (Math.abs(bl.z - ob.z) < 72 && bl.y < ob.height && Math.abs(bl.x - ob.x) < ob.width * 0.85) {
+              spawnExplosion(bl.x, bl.y, ob.z, ob.color, 4, 0.45);
+              bullets.splice(j, 1);
+            }
+          }
+
+          // プレイヤー接触 / グレイズ判定
+          if (Math.abs(ob.z - player.z) < 42 && player.y < ob.height + 10) {
+            var dx = Math.abs(player.x - ob.x);
+            if (dx < ob.width * 0.55 + 16) {
+              if (player.boostTimer > 0) {
+                var ptsSmash = addScore(180, true);
+                playNoiseExplosion(false);
+                camera.shake = Math.max(camera.shake, 8);
+                spawnExplosion(ob.x, Math.min(player.y, ob.height), ob.z, ob.color, 14, 1.0);
+                spawnPopup('SMASH! +' + ptsSmash, ob.x, player.y + 30, ob.z, '#ffdd33', 17);
+                pillars.splice(i, 1);
+                continue;
+              } else {
+                damagePlayer();
+              }
+            } else if (dx < ob.width * 0.55 + 56 && !ob.grazed) {
+              ob.grazed = true;
+              var ptsG = addScore(120, true);
+              player.boostEnergy = Math.min(100, player.boostEnergy + 14);
+              sfxGraze();
+              spawnPopup('GRAZE! +' + ptsG, player.x, player.y + 32, player.z + 15, '#ffdd33', 16);
+            }
+          }
+
+          if (ob.z <= NEAR_Z) {
+            pillars.splice(i, 1);
+          }
+        }
+
+        // ---- エネルギーリング更新 & 通過判定 ----
+        for (i = rings.length - 1; i >= 0; i--) {
+          var r = rings[i];
+          r.z -= activeSpeed * 0.8 * dt;
+          r.rot += dt * 3.0;
+
+          if (!r.collected && Math.abs(r.z - player.z) < 48) {
+            if (dist2D(player.x - r.x, player.y - r.y) < r.radius + 20) {
+              r.collected = true;
+              var ptsR = addScore(200, true);
+              player.boostEnergy = Math.min(100, player.boostEnergy + 28);
+              sfxRing();
+              spawnExplosion(r.x, r.y, r.z, '#22ff99', 10, 0.7);
+              spawnPopup('RING! +' + ptsR, r.x, r.y + 32, r.z, '#22ff99', 18);
+              rings.splice(i, 1);
+              continue;
+            }
+          }
+
+          if (r.z <= NEAR_Z) {
+            rings.splice(i, 1);
+          }
+        }
+
+        // ---- ホバードローン更新 & 判定 ----
+        for (i = drones.length - 1; i >= 0; i--) {
+          var en = drones[i];
+          en.z -= activeSpeed * 0.62 * dt;
+          en.phase += dt * 2.8;
+          en.x = Math.max(-WORLD_LIMIT_X + 20, Math.min(WORLD_LIMIT_X - 20, en.baseX + Math.sin(en.phase) * en.ampX));
+          en.y = Math.max(36, Math.min(WORLD_MAX_Y, en.baseY + Math.cos(en.phase * 1.2) * en.ampY));
+          if (en.hitFlash > 0) en.hitFlash = Math.max(0, en.hitFlash - dt);
+
+          // ゆっくり狙うプラズマ弾を発射
+          en.fireTimer -= dt;
+          if (en.fireTimer <= 0 && en.z > 320 && en.z < 1420) {
+            en.fireTimer = Math.max(0.9, 1.7 - wave * 0.08);
+            var orbSpdZ = 760 + wave * 42;
+            var tFlight = Math.max(0.45, (en.z - player.z) / orbSpdZ);
+            enemyOrbs.push({
+              x: en.x,
+              y: en.y,
+              z: en.z - 16,
+              vx: ((player.x - en.x) / tFlight) * 0.78,
+              vy: ((player.y - en.y) / tFlight) * 0.78,
+              vz: -orbSpdZ,
+              radius: 13,
+              grazed: false
+            });
+          }
+
+          // プレイヤー弾との当たり判定
+          var dead = false;
+          for (j = bullets.length - 1; j >= 0; j--) {
+            var bd = bullets[j];
+            if (Math.abs(bd.z - en.z) < 88 && dist2D(bd.x - en.x, bd.y - en.y) < en.radius + 22) {
+              en.hp--;
+              en.hitFlash = 0.09;
+              bullets.splice(j, 1);
+              spawnExplosion(bd.x, bd.y, en.z, '#00f0ff', 4, 0.5);
+              if (en.hp <= 0) {
+                dead = true;
+                break;
+              }
+            }
+          }
+
+          // プレイヤー接触 / ブースト粉砕
+          if (!dead && Math.abs(en.z - player.z) < 46 && dist2D(en.x - player.x, en.y - player.y) < en.radius + 22) {
+            if (player.boostTimer > 0) {
+              dead = true;
+            } else {
+              damagePlayer();
+              dead = true;
+            }
+          }
+
+          if (dead) {
+            var ptsD = addScore(250, true);
+            playNoiseExplosion(false);
+            camera.shake = Math.max(camera.shake, 5);
+            spawnExplosion(en.x, en.y, en.z, en.color, 13, 0.9);
+            spawnPopup('+' + ptsD, en.x, en.y + 24, en.z, '#00f0ff', 16);
+            drones.splice(i, 1);
+            continue;
+          }
+
+          if (en.z <= NEAR_Z) {
+            drones.splice(i, 1);
+          }
+        }
+
+        // ---- ウェーブボス更新 & 判定 ----
+        if (boss && !boss.dead) {
+          if (boss.z > boss.targetZ) {
+            boss.z -= 460 * dt;
+          } else {
+            boss.phase += dt * (1.2 + wave * 0.1);
+            boss.x = Math.sin(boss.phase) * 148;
+            boss.y = 110 + Math.sin(boss.phase * 1.6) * 36;
+
+            if (boss.telegraph > 0) {
+              boss.telegraph -= dt;
+              if (boss.telegraph <= 0) {
+                var cnt = Math.min(5, 3 + Math.floor((wave - 1) / 2));
+                var bSpdZ = 790 + wave * 45;
+                var bFlight = Math.max(0.45, (boss.z - player.z) / bSpdZ);
+                for (k = 0; k < cnt; k++) {
+                  var spread = (k - (cnt - 1) * 0.5) * 90;
+                  enemyOrbs.push({
+                    x: boss.x + spread * 0.3,
+                    y: boss.y - 6,
+                    z: boss.z - 34,
+                    vx: ((player.x + spread - boss.x) / bFlight) * 0.82,
+                    vy: ((player.y - boss.y) / bFlight) * 0.82,
+                    vz: -bSpdZ,
+                    radius: 16,
+                    grazed: false
+                  });
+                }
+                sfxShoot();
+              }
+            } else {
+              boss.attackTimer -= dt;
+              if (boss.attackTimer <= 0) {
+                boss.telegraph = 0.65;
+                boss.attackTimer = Math.max(1.3, 2.2 - wave * 0.12);
+              }
+            }
+          }
+
+          if (boss.hitFlash > 0) boss.hitFlash = Math.max(0, boss.hitFlash - dt);
+
+          for (j = bullets.length - 1; j >= 0; j--) {
+            var bb = bullets[j];
+            if (Math.abs(bb.z - boss.z) < 98 && dist2D(bb.x - boss.x, bb.y - boss.y) < 74) {
+              boss.hp--;
+              boss.hitFlash = 0.08;
+              bullets.splice(j, 1);
+              spawnExplosion(bb.x, bb.y, boss.z - 24, '#ffdd33', 4, 0.55);
+
+              if (boss.hp <= 0) {
+                boss.dead = true;
+                var ptsB = addScore(2000 + wave * 500, true);
+                playNoiseExplosion(true);
+                camera.shake = 20;
+                spawnExplosion(boss.x, boss.y, boss.z, '#ff2aa4', 24, 1.5);
+                spawnExplosion(boss.x - 40, boss.y + 12, boss.z, '#00f0ff', 14, 1.2);
+                spawnExplosion(boss.x + 40, boss.y - 12, boss.z, '#ffdd33', 14, 1.2);
+                spawnPopup('WAVE CLEAR! +' + ptsB, boss.x, boss.y + 36, boss.z, '#ffdd33', 20);
+
+                if (player.hp < player.maxHp) {
+                  player.hp++;
+                  spawnPopup('HP +1', player.x, player.y + 42, player.z + 15, '#22ff99', 18);
+                }
+                wave++;
+                waveTimer = 0;
+                boss = null;
+                break;
+              }
+            }
+          }
+        }
+
+        // ---- 敵弾更新 & 判定 ----
+        for (i = enemyOrbs.length - 1; i >= 0; i--) {
+          var orb = enemyOrbs[i];
+          orb.x += orb.vx * dt;
+          orb.y += orb.vy * dt;
+          orb.z += orb.vz * dt;
+
+          if (Math.abs(orb.z - player.z) < 42) {
+            var od = dist2D(orb.x - player.x, orb.y - player.y);
+            if (od < orb.radius + 17) {
+              if (player.boostTimer > 0) {
+                var ptsDf = addScore(100, true);
+                spawnExplosion(orb.x, orb.y, orb.z, '#00f0ff', 6, 0.5);
+                spawnPopup('DEFLECT +' + ptsDf, orb.x, orb.y + 24, orb.z, '#00f0ff', 15);
+              } else {
+                damagePlayer();
+              }
+              enemyOrbs.splice(i, 1);
+              continue;
+            } else if (od < orb.radius + 54 && !orb.grazed) {
+              orb.grazed = true;
+              var ptsOg = addScore(100, true);
+              player.boostEnergy = Math.min(100, player.boostEnergy + 11);
+              sfxGraze();
+              spawnPopup('GRAZE! +' + ptsOg, player.x, player.y + 30, player.z + 15, '#ffdd33', 16);
+            }
+          }
+
+          if (orb.z <= NEAR_Z || orb.y < 0) {
+            enemyOrbs.splice(i, 1);
+          }
+        }
+
+        // ---- パーティクルプール更新 ----
+        for (i = 0; i < MAX_PARTICLES; i++) {
+          var pt = particlePool[i];
+          if (!pt.active) continue;
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.z += pt.vz * dt;
+          pt.vy -= 210 * dt;
+          if (pt.y < 2) pt.y = 2;
+          pt.life -= dt;
+          if (pt.life <= 0 || pt.z <= NEAR_Z) {
+            pt.active = false;
+          }
+        }
+
+        // ---- ポップアッププール更新 ----
+        for (i = 0; i < MAX_POPUPS; i++) {
+          var pop = popupPool[i];
+          if (!pop.active) continue;
+          pop.y += 40 * dt;
+          pop.life -= dt;
+          if (pop.life <= 0) {
+            pop.active = false;
+          }
+        }
+      }
+
+      // =========================================================================
+      // 10. 高速Canvas 2Dレンダリング（shadowBlur不使用・Zソート）
+      // =========================================================================
+      function render() {
+        var i;
+        // 毎フレーム必ず変換行列をリセット
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        var tIdx = getThemeIndex();
+        var theme = THEMES[tIdx];
+        var grads = cachedThemeGrads[tIdx];
+        var horizonY = camera.horizonY;
+        var shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake : 0;
+        var shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake : 0;
+        var pad = 160;
+
+        ctx.save();
+        ctx.translate(CANVAS_W * 0.5 + shakeX, horizonY + shakeY);
+        ctx.rotate(camera.roll);
+        ctx.translate(-CANVAS_W * 0.5, -horizonY);
+
+        // 1. 空グラデーション
+        ctx.fillStyle = grads.sky;
+        ctx.fillRect(-pad, -pad, CANVAS_W + pad * 2, horizonY + pad + 4);
+
+        // 2. 瞬く星空
+        for (i = 0; i < stars.length; i++) {
+          var st = stars[i];
+          var sx = ((st.x - camera.x * 0.08) % CANVAS_W + CANVAS_W) % CANVAS_W;
+          var alpha = 0.4 + 0.6 * Math.abs(Math.sin(timeElapsed * 2.2 + st.phase));
+          ctx.fillStyle = 'rgba(225, 245, 255, ' + alpha.toFixed(2) + ')';
+          ctx.fillRect(sx, st.y, st.size, st.size);
+        }
+
+        // 3. スキャンライン付きレトロ太陽（シャドウなしで多層アルファリング表現）
+        var sunX = CANVAS_W * 0.5 - camera.x * 0.1;
+        var sunR = 68;
+        var sunY = horizonY - sunR * 0.36;
+
+        ctx.fillStyle = 'rgba(255, 60, 160, 0.14)';
+        ctx.beginPath();
+        safeArc(sunX, sunY, sunR * 1.45);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(255, 110, 170, 0.22)';
+        ctx.beginPath();
+        safeArc(sunX, sunY, sunR * 1.18);
+        ctx.fill();
+
+        ctx.save();
+        ctx.beginPath();
+        safeArc(sunX, sunY, sunR);
+        ctx.clip();
+        ctx.fillStyle = grads.sun;
+        ctx.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
+
+        ctx.fillStyle = theme.skyMid;
+        for (i = 0; i < 6; i++) {
+          ctx.fillRect(sunX - sunR, sunY + 10 + i * 10, sunR * 2, 2 + i * 1.6);
+        }
+        ctx.restore();
+
+        // 4. 透視グリッド地面
+        drawGround(theme, grads.gnd, horizonY, pad);
+
+        // 5. 水平線の多層ネオンライン
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        safeLineWidth(6);
+        ctx.beginPath();
+        ctx.moveTo(-pad, horizonY);
+        ctx.lineTo(CANVAS_W + pad, horizonY);
+        ctx.stroke();
+
+        ctx.strokeStyle = theme.horizon;
+        safeLineWidth(2);
+        ctx.beginPath();
+        ctx.moveTo(-pad, horizonY);
+        ctx.lineTo(CANVAS_W + pad, horizonY);
+        ctx.stroke();
+
+        // 6. 地面シャドウ（全エンティティ）
+        drawAllShadows();
+
+        // 7. Zソート描画リスト構築（奥 -> 手前）
+        renderList.length = 0;
+        for (i = 0; i < pillars.length; i++) {
+          if (pillars[i].z > NEAR_Z) renderList.push({ z: pillars[i].z, type: 1, obj: pillars[i] });
+        }
+        for (i = 0; i < rings.length; i++) {
+          if (rings[i].z > NEAR_Z) renderList.push({ z: rings[i].z, type: 2, obj: rings[i] });
+        }
+        for (i = 0; i < drones.length; i++) {
+          if (drones[i].z > NEAR_Z) renderList.push({ z: drones[i].z, type: 3, obj: drones[i] });
+        }
+        if (boss && !boss.dead && boss.z > NEAR_Z) {
+          renderList.push({ z: boss.z, type: 4, obj: boss });
+        }
+        for (i = 0; i < bullets.length; i++) {
+          if (bullets[i].z > NEAR_Z) renderList.push({ z: bullets[i].z, type: 5, obj: bullets[i] });
+        }
+        for (i = 0; i < enemyOrbs.length; i++) {
+          if (enemyOrbs[i].z > NEAR_Z) renderList.push({ z: enemyOrbs[i].z, type: 6, obj: enemyOrbs[i] });
+        }
+        for (i = 0; i < MAX_PARTICLES; i++) {
+          if (particlePool[i].active && particlePool[i].z > NEAR_Z) {
+            renderList.push({ z: particlePool[i].z, type: 7, obj: particlePool[i] });
+          }
+        }
+        if (gameState === STATE_PLAYING || gameState === STATE_PAUSED) {
+          renderList.push({ z: player.z + 460, type: 8, obj: null }); // レティクル
+          renderList.push({ z: player.z, type: 9, obj: null });       // 自機
+        }
+
+        renderList.sort(function (a, b) {
+          return b.z - a.z;
+        });
+
+        for (i = 0; i < renderList.length; i++) {
+          var item = renderList[i];
+          switch (item.type) {
+            case 1: drawPillar(item.obj); break;
+            case 2: drawRing(item.obj); break;
+            case 3: drawDrone(item.obj); break;
+            case 4: drawBoss(item.obj); break;
+            case 5: drawBullet(item.obj); break;
+            case 6: drawEnemyOrb(item.obj); break;
+            case 7: drawParticle(item.obj); break;
+            case 8: drawReticle(); break;
+            case 9: drawPlayer(); break;
+          }
+        }
+
+        // 8. ポップアップテキスト
+        drawPopups();
+
+        ctx.restore();
+
+        // 9. キャンバス内HUD描画（回転なし・常に水平）
+        if (gameState === STATE_PLAYING || gameState === STATE_PAUSED) {
+          drawCanvasHud(theme);
+        }
+      }
+
+      function drawGround(theme, gndGrad, horizonY, pad) {
+        var i;
+        ctx.fillStyle = gndGrad;
+        ctx.fillRect(-pad, horizonY, CANVAS_W + pad * 2, CANVAS_H - horizonY + pad);
+
+        // 横方向の透視ライン＆スクロール帯
+        var step = 100;
+        for (i = 17; i >= 1; i--) {
+          var zFar = i * step - (groundScroll % step) + step;
+          var zNear = zFar - step;
+          if (zNear <= NEAR_Z + 4) continue;
+
+          var pFar = project(0, 0, zFar);
+          var pNear = project(0, 0, zNear);
+          if (!pFar || !pNear) continue;
+
+          var band = Math.floor((zFar + groundScroll) / step);
+          if (band % 2 === 0) {
+            ctx.fillStyle = theme.bandFill;
+            ctx.fillRect(-pad, pFar.sy, CANVAS_W + pad * 2, Math.max(0.5, pNear.sy - pFar.sy + 1));
+          }
+
+          ctx.strokeStyle = theme.gridX;
+          safeLineWidth(Math.min(2.4, pNear.scale * 0.85));
+          ctx.beginPath();
+          ctx.moveTo(-pad, pNear.sy);
+          ctx.lineTo(CANVAS_W + pad, pNear.sy);
+          ctx.stroke();
+        }
+
+        // 縦方向の放射グリッド線
+        var laneStep = 90;
+        var baseLane = Math.floor(camera.x / laneStep) * laneStep;
+        ctx.strokeStyle = theme.gridZ;
+        safeLineWidth(1.2);
+        for (i = -9; i <= 9; i++) {
+          var wx = baseLane + i * laneStep;
+          var pf = project(wx, 0, MAX_Z);
+          var pn = project(wx, 0, 36);
+          if (!pf || !pn) continue;
+          ctx.beginPath();
+          ctx.moveTo(pf.sx, pf.sy);
+          ctx.lineTo(pn.sx, pn.sy);
+          ctx.stroke();
+        }
+
+        // 左右コース境界ライン
+        var bounds = [-WORLD_LIMIT_X - 24, WORLD_LIMIT_X + 24];
+        ctx.strokeStyle = theme.horizon;
+        safeLineWidth(2.2);
+        for (i = 0; i < 2; i++) {
+          var bf = project(bounds[i], 0, MAX_Z);
+          var bn = project(bounds[i], 0, 36);
+          if (!bf || !bn) continue;
+          ctx.beginPath();
+          ctx.moveTo(bf.sx, bf.sy);
+          ctx.lineTo(bn.sx, bn.sy);
+          ctx.stroke();
+        }
+      }
+
+      function drawShadow(wx, wz, rxWorld) {
+        if (wz <= NEAR_Z) return;
+        var p = project(wx, 0, wz);
+        if (!p) return;
+        var rx = rxWorld * p.scale;
+        if (rx < 1.2) return;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.beginPath();
+        ctx.ellipse(p.sx, p.sy, Math.max(0.5, rx), Math.max(0.5, rx * 0.3), 0, 0, 6.2831853);
+        ctx.fill();
+      }
+
+      function drawAllShadows() {
+        var i;
+        for (i = 0; i < drones.length; i++) drawShadow(drones[i].x, drones[i].z, drones[i].radius * 1.05);
+        for (i = 0; i < rings.length; i++) drawShadow(rings[i].x, rings[i].z, rings[i].radius * 0.85);
+        for (i = 0; i < enemyOrbs.length; i++) drawShadow(enemyOrbs[i].x, enemyOrbs[i].z, enemyOrbs[i].radius * 0.85);
+        if (boss && !boss.dead) drawShadow(boss.x, boss.z, 84);
+        if (gameState === STATE_PLAYING || gameState === STATE_PAUSED) drawShadow(player.x, player.z, 28);
+      }
+
+      function drawPillar(ob) {
+        var pBase = project(ob.x, 0, ob.z);
+        var pTop = project(ob.x, ob.height, ob.z);
+        if (!pBase || !pTop) return;
+
+        var w = Math.max(1, ob.width * pBase.scale);
+        var h = Math.max(1, pBase.sy - pTop.sy);
+        var x0 = pBase.sx - w * 0.5;
+
+        ctx.fillStyle = ob.dark;
+        ctx.fillRect(x0, pTop.sy, w, h);
+
+        // ネオンの縁取り（shadowBlurなし）
+        ctx.strokeStyle = ob.color;
+        safeLineWidth(Math.max(1.2, 2.6 * pBase.scale));
+        ctx.strokeRect(x0, pTop.sy, w, h);
+
+        ctx.strokeStyle = '#ffffff';
+        safeLineWidth(Math.max(0.6, 1.0 * pBase.scale));
+        ctx.strokeRect(x0 + 1, pTop.sy + 1, Math.max(1, w - 2), Math.max(1, h - 2));
+
+        ctx.fillStyle = ob.color;
+        ctx.beginPath();
+        safeArc(pTop.sx, pTop.sy, w * 0.32);
+        ctx.fill();
+      }
+
+      function drawRing(r) {
+        var p = project(r.x, r.y, r.z);
+        if (!p) return;
+        var rad = r.radius * p.scale;
+        if (rad < 1.5) return;
+
+        ctx.save();
+        ctx.translate(p.sx, p.sy);
+        ctx.rotate(r.rot);
+
+        ctx.strokeStyle = 'rgba(34, 255, 153, 0.32)';
+        safeLineWidth(7.5 * p.scale);
+        ctx.beginPath();
+        safeArc(0, 0, rad);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#22ff99';
+        safeLineWidth(3.2 * p.scale);
+        ctx.beginPath();
+        safeArc(0, 0, rad);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffffff';
+        safeLineWidth(1.3 * p.scale);
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(0.5, rad * 0.78), 0, 4.4);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawDrone(en) {
+        var p = project(en.x, en.y, en.z);
+        if (!p) return;
+        var r = en.radius * p.scale;
+        if (r < 1.5) return;
+
+        var flash = en.hitFlash > 0;
+        ctx.save();
+        ctx.translate(p.sx, p.sy);
+
+        ctx.fillStyle = flash ? '#ffffff' : '#1b0936';
+        ctx.strokeStyle = flash ? '#ffffff' : en.color;
+        safeLineWidth(2.2 * p.scale);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.85);
+        ctx.lineTo(r * 1.25, 0);
+        ctx.lineTo(0, r * 0.85);
+        ctx.lineTo(-r * 1.25, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = flash ? '#ffdd33' : '#ff2aa4';
+        ctx.beginPath();
+        safeArc(0, 0, r * 0.36);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        safeArc(0, 0, r * 0.14);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawBoss(b) {
+        var p = project(b.x, b.y, b.z);
+        if (!p) return;
+        var s = p.scale;
+        var w = 84 * s;
+        var h = 46 * s;
+        var flash = b.hitFlash > 0;
+        var charging = b.telegraph > 0;
+
+        ctx.save();
+        ctx.translate(p.sx, p.sy);
+
+        // 外殻
+        ctx.fillStyle = flash ? '#ffffff' : '#1b0736';
+        ctx.strokeStyle = flash ? '#ffffff' : '#ff2aa4';
+        safeLineWidth(2.8 * s);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -h * 0.9);
+        ctx.lineTo(w * 0.65, -h * 0.45);
+        ctx.lineTo(w * 1.3, -h * 0.78);
+        ctx.lineTo(w * 1.1, h * 0.5);
+        ctx.lineTo(w * 0.48, h * 0.85);
+        ctx.lineTo(-w * 0.48, h * 0.85);
+        ctx.lineTo(-w * 1.1, h * 0.5);
+        ctx.lineTo(-w * 1.3, -h * 0.78);
+        ctx.lineTo(-w * 0.65, -h * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // シアンアクセントライン
+        ctx.strokeStyle = '#00f0ff';
+        safeLineWidth(2.0 * s);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.85, -h * 0.2);
+        ctx.lineTo(-w * 0.34, h * 0.34);
+        ctx.lineTo(w * 0.34, h * 0.34);
+        ctx.lineTo(w * 0.85, -h * 0.2);
+        ctx.stroke();
+
+        // コア（多層円で高速ネオン表現）
+        var coreR = Math.max(1.5, (18 + Math.sin(timeElapsed * 12) * 2.5) * s);
+        ctx.fillStyle = charging ? 'rgba(255, 221, 51, 0.3)' : 'rgba(255, 42, 164, 0.3)';
+        ctx.beginPath();
+        safeArc(0, 0, coreR * 1.5);
+        ctx.fill();
+
+        ctx.fillStyle = charging ? '#ffdd33' : '#ff2aa4';
+        ctx.beginPath();
+        safeArc(0, 0, coreR);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        safeArc(0, 0, coreR * 0.45);
+        ctx.fill();
+
+        // 攻撃予兆リング
+        if (charging) {
+          ctx.strokeStyle = '#ffdd33';
+          safeLineWidth(2.4 * s);
+          ctx.beginPath();
+          safeArc(0, 0, coreR * (1.2 + b.telegraph * 2.2));
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawBullet(b) {
+        var pHead = project(b.x, b.y, b.z);
+        var pTail = project(b.x, b.y, Math.max(NEAR_Z + 1, b.z - 85));
+        if (!pHead || !pTail) return;
+
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = b.color;
+        safeLineWidth(6.0 * pHead.scale);
+        ctx.beginPath();
+        ctx.moveTo(pTail.sx, pTail.sy);
+        ctx.lineTo(pHead.sx, pHead.sy);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffffff';
+        safeLineWidth(2.2 * pHead.scale);
+        ctx.beginPath();
+        ctx.moveTo(pTail.sx, pTail.sy);
+        ctx.lineTo(pHead.sx, pHead.sy);
+        ctx.stroke();
+      }
+
+      function drawEnemyOrb(orb) {
+        var p = project(orb.x, orb.y, orb.z);
+        if (!p) return;
+        var r = orb.radius * p.scale;
+        if (r < 1) return;
+
+        ctx.fillStyle = 'rgba(255, 60, 0, 0.32)';
+        ctx.beginPath();
+        safeArc(p.sx, p.sy, r * 1.45);
+        ctx.fill();
+
+        ctx.fillStyle = '#ff4d00';
+        ctx.beginPath();
+        safeArc(p.sx, p.sy, r);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        safeArc(p.sx, p.sy, r * 0.45);
+        ctx.fill();
+      }
+
+      function drawParticle(pt) {
+        var p = project(pt.x, pt.y, pt.z);
+        if (!p) return;
+        var ratio = Math.max(0, Math.min(1, pt.life / pt.maxLife));
+        var sz = Math.max(1.2, pt.size * p.scale * ratio);
+        ctx.globalAlpha = ratio;
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(p.sx - sz * 0.5, p.sy - sz * 0.5, sz, sz);
+        ctx.globalAlpha = 1;
+      }
+
+      function drawReticle() {
+        var pNear = project(player.x, player.y + 4, player.z + 460);
+        var pFar = project(player.x, player.y + 4, player.z + 880);
+        if (!pNear || !pFar) return;
+
+        var locked = false;
+        var i;
+        for (i = 0; i < drones.length; i++) {
+          var en = drones[i];
+          if (en.z > player.z && dist2D(en.x - player.x, en.y - player.y) < en.radius + 26) {
+            locked = true;
+            break;
+          }
+        }
+        if (!locked && boss && !boss.dead && dist2D(boss.x - player.x, boss.y - player.y) < 76) {
+          locked = true;
+        }
+
+        var color = locked ? '#ff2aa4' : '#00f0ff';
+        var rad = locked ? 18 : 14;
+
+        ctx.strokeStyle = color;
+        safeLineWidth(locked ? 2.2 : 1.4);
+
+        ctx.beginPath();
+        safeArc(pFar.sx, pFar.sy, 3.2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        safeArc(pNear.sx, pNear.sy, rad);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(pNear.sx - rad - 5, pNear.sy);
+        ctx.lineTo(pNear.sx - 5, pNear.sy);
+        ctx.moveTo(pNear.sx + 5, pNear.sy);
+        ctx.lineTo(pNear.sx + rad + 5, pNear.sy);
+        ctx.moveTo(pNear.sx, pNear.sy - rad - 5);
+        ctx.lineTo(pNear.sx, pNear.sy - 5);
+        ctx.moveTo(pNear.sx, pNear.sy + 5);
+        ctx.lineTo(pNear.sx, pNear.sy + rad + 5);
+        ctx.stroke();
+      }
+
+      function drawPlayer() {
+        if (player.invuln > 0 && Math.floor(timeElapsed * 20) % 2 === 0) return;
+        var p = project(player.x, player.y, player.z);
+        if (!p) return;
+
+        var s = p.scale;
+        var bw = 22 * s;
+        var bh = 14 * s;
+
+        ctx.save();
+        ctx.translate(p.sx, p.sy);
+        ctx.rotate(player.bank);
+
+        // ブーストオーラ（多層アルファ円）
+        if (player.boostTimer > 0) {
+          ctx.fillStyle = 'rgba(0, 240, 255, 0.24)';
+          ctx.beginPath();
+          safeArc(0, 0, bw * 1.75);
+          ctx.fill();
+
+          ctx.strokeStyle = '#ffdd33';
+          safeLineWidth(2.2);
+          ctx.beginPath();
+          safeArc(0, 0, bw * 1.4);
+          ctx.stroke();
+        }
+
+        // 外側ウイング
+        ctx.fillStyle = '#151038';
+        ctx.strokeStyle = '#00f0ff';
+        safeLineWidth(1.8 * s);
+        ctx.beginPath();
+        ctx.moveTo(0, -bh * 0.9);
+        ctx.lineTo(bw * 1.38, bh * 0.45);
+        ctx.lineTo(bw * 0.65, bh * 0.72);
+        ctx.lineTo(0, bh * 0.18);
+        ctx.lineTo(-bw * 0.65, bh * 0.72);
+        ctx.lineTo(-bw * 1.38, bh * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // 中央ボディ
+        ctx.fillStyle = '#281d66';
+        ctx.strokeStyle = '#ff2aa4';
+        ctx.beginPath();
+        ctx.moveTo(0, -bh * 1.15);
+        ctx.lineTo(bw * 0.42, bh * 0.45);
+        ctx.lineTo(0, bh * 0.76);
+        ctx.lineTo(-bw * 0.42, bh * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // ツインスラスター炎
+        var flame = (player.boostTimer > 0 ? 1.55 : 0.85) + Math.sin(timeElapsed * 42) * 0.2;
+        var txList = [-bw * 0.26, bw * 0.26];
+        var ti;
+        for (ti = 0; ti < 2; ti++) {
+          var tx = txList[ti];
+          ctx.fillStyle = player.boostTimer > 0 ? '#ffdd33' : '#00f0ff';
+          ctx.beginPath();
+          ctx.ellipse(tx, bh * 0.56, Math.max(0.5, bw * 0.14), Math.max(0.5, bh * 0.28 * flame), 0, 0, 6.2831853);
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          safeArc(tx, bh * 0.48, bw * 0.08);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawPopups() {
+        var i;
+        ctx.textAlign = 'center';
+        for (i = 0; i < MAX_POPUPS; i++) {
+          var pop = popupPool[i];
+          if (!pop.active) continue;
+          var p = project(pop.x, pop.y, pop.z);
+          if (!p) continue;
+          var alpha = Math.max(0, Math.min(1, pop.life / pop.maxLife));
+          ctx.globalAlpha = alpha;
+          ctx.font = 'bold ' + pop.size + 'px monospace, sans-serif';
+          ctx.fillStyle = '#000000';
+          ctx.fillText(pop.text, p.sx + 1.5, p.sy + 1.5);
+          ctx.fillStyle = pop.color;
+          ctx.fillText(pop.text, p.sx, p.sy);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function drawCanvasHud(theme) {
+        var i;
+        // ---- 左上：スコア / ハイスコア / コンボ ----
+        ctx.fillStyle = 'rgba(8, 4, 24, 0.72)';
+        ctx.fillRect(12, 10, 224, 50);
+        ctx.strokeStyle = theme.accent;
+        safeLineWidth(1.2);
+        ctx.strokeRect(12, 10, 224, 50);
+
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 10px monospace, sans-serif';
+        ctx.fillStyle = '#8be9fd';
+        ctx.fillText('SCORE', 20, 24);
+        ctx.fillStyle = '#ff99d6';
+        ctx.fillText('HI-SCORE', 128, 24);
+
+        ctx.font = 'bold 19px monospace, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(pad6(score), 20, 48);
+        ctx.font = 'bold 15px monospace, sans-serif';
+        ctx.fillStyle = '#ff99d6';
+        ctx.fillText(pad6(hiScore), 128, 47);
+
+        if (combo > 1) {
+          var mult = (1 + Math.min(combo, 30) * 0.1).toFixed(1);
+          ctx.fillStyle = 'rgba(20, 10, 40, 0.8)';
+          ctx.fillRect(12, 65, 140, 22);
+          ctx.strokeStyle = '#ffdd33';
+          safeLineWidth(1);
+          ctx.strokeRect(12, 65, 140, 22);
+          ctx.font = 'bold 12px monospace, sans-serif';
+          ctx.fillStyle = '#ffdd33';
+          ctx.fillText(combo + ' COMBO  x' + mult, 20, 80);
+        }
+
+        // ---- 上中央：ウェーブ表示 & ボスHPバー ----
+        ctx.fillStyle = 'rgba(8, 4, 24, 0.78)';
+        ctx.fillRect(CANVAS_W * 0.5 - 58, 10, 116, 24);
+        ctx.strokeStyle = '#ff2aa4';
+        safeLineWidth(1.2);
+        ctx.strokeRect(CANVAS_W * 0.5 - 58, 10, 116, 24);
+
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 13px monospace, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('WAVE ' + wave, CANVAS_W * 0.5, 27);
+
+        if (boss && !boss.dead) {
+          var bw = 260;
+          var bx = CANVAS_W * 0.5 - bw * 0.5;
+          var by = 40;
+          ctx.fillStyle = 'rgba(26, 4, 22, 0.85)';
+          ctx.fillRect(bx, by, bw, 28);
+          ctx.strokeStyle = '#ff2aa4';
+          safeLineWidth(1.2);
+          ctx.strokeRect(bx, by, bw, 28);
+
+          ctx.textAlign = 'left';
+          ctx.font = 'bold 10px monospace, sans-serif';
+          ctx.fillStyle = '#ff8cd0';
+          ctx.fillText('BOSS: ' + boss.name, bx + 8, by + 12);
+
+          var pct = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
+          ctx.fillStyle = '#140414';
+          ctx.fillRect(bx + 8, by + 16, bw - 16, 7);
+          ctx.fillStyle = '#ff2aa4';
+          ctx.fillRect(bx + 8, by + 16, (bw - 16) * pct, 7);
+        }
+
+        // ---- 右上：FPSカウンター & 状態表示 ----
+        ctx.fillStyle = 'rgba(8, 4, 24, 0.72)';
+        ctx.fillRect(CANVAS_W - 118, 10, 106, 40);
+        ctx.strokeStyle = '#3b3375';
+        safeLineWidth(1);
+        ctx.strokeRect(CANVAS_W - 118, 10, 106, 40);
+
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 12px monospace, sans-serif';
+        ctx.fillStyle = fpsDisplay >= 50 ? '#22ff99' : '#ffdd33';
+        ctx.fillText('FPS: ' + fpsDisplay, CANVAS_W - 20, 26);
+
+        ctx.font = 'bold 10px monospace, sans-serif';
+        ctx.fillStyle = autoFire ? '#00f0ff' : '#ff8cd0';
+        ctx.fillText((autoFire ? 'AUTO:ON ' : 'AUTO:OFF ') + (audioMuted ? 'MUTE' : 'SFX'), CANVAS_W - 20, 42);
+
+        // ---- 中央：ボス出現警告バナー ----
+        if (warningTimer > 0 && Math.floor(timeElapsed * 8) % 2 === 0) {
+          ctx.fillStyle = 'rgba(48, 4, 24, 0.88)';
+          ctx.fillRect(CANVAS_W * 0.5 - 210, CANVAS_H * 0.5 - 32, 420, 58);
+          ctx.strokeStyle = '#ff2aa4';
+          safeLineWidth(2);
+          ctx.strokeRect(CANVAS_W * 0.5 - 210, CANVAS_H * 0.5 - 32, 420, 58);
+
+          ctx.textAlign = 'center';
+          ctx.font = 'bold 20px monospace, sans-serif';
+          ctx.fillStyle = '#ff5ca8';
+          ctx.fillText('WARNING: BOSS APPROACHING', CANVAS_W * 0.5, CANVAS_H * 0.5 - 6);
+          ctx.font = 'bold 12px sans-serif';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('大型サイバーボス接近中！', CANVAS_W * 0.5, CANVAS_H * 0.5 + 16);
+        }
+
+        // ---- 左下：HPバー ----
+        ctx.fillStyle = 'rgba(8, 4, 24, 0.76)';
+        ctx.fillRect(12, CANVAS_H - 48, 186, 36);
+        ctx.strokeStyle = '#ff2aa4';
+        safeLineWidth(1.2);
+        ctx.strokeRect(12, CANVAS_H - 48, 186, 36);
+
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 10px monospace, sans-serif';
+        ctx.fillStyle = '#ff99d6';
+        ctx.fillText('SHIELD / HP  ' + player.hp + '/' + player.maxHp, 20, CANVAS_H - 34);
+
+        var segW = 31;
+        for (i = 0; i < player.maxHp; i++) {
+          var sx = 20 + i * (segW + 4);
+          var sy = CANVAS_H - 27;
+          if (i < player.hp) {
+            ctx.fillStyle = player.hp <= 1 ? '#ff3b3b' : '#ff2aa4';
+          } else {
+            ctx.fillStyle = '#251838';
+          }
+          ctx.fillRect(sx, sy, segW, 9);
+        }
+
+        // ---- 右下：BOOSTゲージ ----
+        ctx.fillStyle = 'rgba(8, 4, 24, 0.76)';
+        ctx.fillRect(CANVAS_W - 212, CANVAS_H - 48, 200, 36);
+        ctx.strokeStyle = '#00f0ff';
+        safeLineWidth(1.2);
+        ctx.strokeRect(CANVAS_W - 212, CANVAS_H - 48, 200, 36);
+
+        ctx.textAlign = 'left';
+        ctx.font = 'bold 10px monospace, sans-serif';
+        ctx.fillStyle = '#8be9fd';
+        ctx.fillText('BOOST', CANVAS_W - 204, CANVAS_H - 34);
+
+        ctx.textAlign = 'right';
+        var boostLabel = player.boostTimer > 0
+          ? 'ACTIVE!'
+          : (player.boostEnergy >= 30 ? 'READY' : Math.floor(player.boostEnergy) + '%');
+        ctx.fillStyle = player.boostTimer > 0 ? '#ffdd33' : (player.boostEnergy >= 30 ? '#00f0ff' : '#9c8ec4');
+        ctx.fillText(boostLabel, CANVAS_W - 20, CANVAS_H - 34);
+
+        var bPct = Math.max(0, Math.min(1, player.boostEnergy / 100));
+        ctx.fillStyle = '#151230';
+        ctx.fillRect(CANVAS_W - 204, CANVAS_H - 27, 184, 9);
+        ctx.fillStyle = player.boostTimer > 0 ? '#ffdd33' : '#00f0ff';
+        ctx.fillRect(CANVAS_W - 204, CANVAS_H - 27, 184 * bPct, 9);
+      }
+
+      // =========================================================================
+      // 11. 入力イベント（キーボード / マウス / タッチ）
+      // =========================================================================
+      function toggleAutoFire() {
+        autoFire = !autoFire;
+        autoBtn.textContent = autoFire ? 'オート射撃: ON (F)' : 'オート射撃: OFF (F)';
+        autoBtn.className = autoFire ? 'ctrl-btn' : 'ctrl-btn off';
+      }
+
+      function toggleMute() {
+        unlockAudio();
+        audioMuted = !audioMuted;
+        muteBtn.textContent = audioMuted ? 'サウンド: OFF (M)' : 'サウンド: ON (M)';
+        muteBtn.className = audioMuted ? 'ctrl-btn off' : 'ctrl-btn';
+      }
+
+      function updatePointerFromClient(clientX, clientY) {
+        var rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        var nx = ((clientX - rect.left) / rect.width) * 2 - 1;
+        var ny = 1 - ((clientY - rect.top) / rect.height);
+        pointer.targetX = Math.max(-WORLD_LIMIT_X, Math.min(WORLD_LIMIT_X, nx * WORLD_LIMIT_X * 1.12));
+        pointer.targetY = Math.max(WORLD_MIN_Y, Math.min(WORLD_MAX_Y, WORLD_MIN_Y + ny * (WORLD_MAX_Y - WORLD_MIN_Y) * 1.12));
+        pointer.active = true;
+      }
+
+      window.addEventListener('keydown', function (e) {
+        unlockAudio();
+        var code = e.code || e.key;
+        keys[code] = true;
+        if (e.key) keys[e.key] = true;
+
+        if (code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight' || code === 'Space' || e.key === ' ') {
+          e.preventDefault();
+        }
+
+        if (code === 'ShiftLeft' || code === 'ShiftRight' || code === 'KeyX' || e.key === 'x' || e.key === 'X') {
+          activateBoost();
+        } else if (code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+          togglePause();
+        } else if (code === 'KeyM' || e.key === 'm' || e.key === 'M') {
+          toggleMute();
+        } else if (code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+          toggleAutoFire();
+        } else if (code === 'Enter' || code === 'Space' || e.key === ' ') {
+          if (gameState === STATE_TITLE) {
+            startGame();
+          } else if (gameState === STATE_GAMEOVER && gameOverLock <= 0) {
+            startGame();
+          }
+        }
+      });
+
+      window.addEventListener('keyup', function (e) {
+        var code = e.code || e.key;
+        keys[code] = false;
+        if (e.key) keys[e.key] = false;
+      });
+
+      canvas.addEventListener('mousemove', function (e) {
+        if (gameState !== STATE_PLAYING) return;
+        updatePointerFromClient(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener('mousedown', function (e) {
+        unlockAudio();
+        if (gameState !== STATE_PLAYING) return;
+        if (e.button === 2) {
+          activateBoost();
+        } else {
+          pointer.down = true;
+          updatePointerFromClient(e.clientX, e.clientY);
+        }
+      });
+
+      window.addEventListener('mouseup', function () {
+        pointer.down = false;
+      });
+
+      canvas.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+      });
+
+      canvas.addEventListener('touchstart', function (e) {
+        unlockAudio();
+        if (gameState !== STATE_PLAYING) return;
+        e.preventDefault();
+        pointer.down = true;
+        if (e.touches && e.touches[0]) {
+          updatePointerFromClient(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', function (e) {
+        if (gameState !== STATE_PLAYING) return;
+        e.preventDefault();
+        if (e.touches && e.touches[0]) {
+          updatePointerFromClient(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', function () {
+        pointer.down = false;
+      });
+
+      // ボタン操作
+      startBtn.addEventListener('click', startGame);
+      retryBtn.addEventListener('click', startGame);
+      resumeBtn.addEventListener('click', togglePause);
+      pauseTitleBtn.addEventListener('click', showTitle);
+      overTitleBtn.addEventListener('click', showTitle);
+      pauseBtn.addEventListener('click', togglePause);
+      autoBtn.addEventListener('click', toggleAutoFire);
+      muteBtn.addEventListener('click', toggleMute);
+      restartTopBtn.addEventListener('click', startGame);
+      boostTouchBtn.addEventListener('click', function () {
+        unlockAudio();
+        activateBoost();
+      });
+
+      window.addEventListener('resize', fitCanvasToViewport);
+
+      // =========================================================================
+      // 12. メインループ起動
+      // =========================================================================
+      var lastTime = 0;
+
+      function gameLoop(now) {
+        if (!lastTime) lastTime = now;
+        var rawDt = (now - lastTime) / 1000;
+        lastTime = now;
+
+        // デルタタイムを0.001〜0.05秒に厳格クランプ
+        var dt = Math.min(0.05, Math.max(0.001, rawDt));
+
+        // FPS計測（0.5秒ごとに更新）
+        fpsFrames++;
+        fpsAccum += rawDt;
+        if (fpsAccum >= 0.5) {
+          fpsDisplay = Math.round(fpsFrames / fpsAccum);
+          fpsFrames = 0;
+          fpsAccum = 0;
+        }
+
+        update(dt);
+        render();
+
+        window.requestAnimationFrame(gameLoop);
+      }
+
+      window.onload = function () {
+        buildThemeGradients();
+        fitCanvasToViewport();
+        titleHiScore.textContent = pad6(hiScore);
+        window.requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>

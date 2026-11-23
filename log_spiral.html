@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>LOG SPIRAL</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* ベーススタイルとスクロール・選択防止 */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #040712;
+      color: #f8fafc;
+      font-family: 'Inter', sans-serif;
+      touch-action: none;
+    }
+
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: none;
+    }
+
+    /* オーバーレイUIのトランジション */
+    .ui-overlay {
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+
+    .ui-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.97);
+    }
+
+    /* ガラスモーフィズム風のミニマルパネル */
+    .glass-panel {
+      background: rgba(8, 13, 30, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    /* アクションボタン */
+    .btn-neon {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(56, 189, 248, 0.08));
+      border: 1px solid rgba(56, 189, 248, 0.55);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+
+    .btn-neon:hover {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.38), rgba(56, 189, 248, 0.18));
+      border-color: rgba(125, 211, 252, 0.9);
+      box-shadow: 0 0 28px rgba(56, 189, 248, 0.45);
+      transform: translateY(-1px);
+    }
+
+    .btn-neon:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    /* 反転予告バナーのパルス */
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.35; transform: scale(0.98); }
+      50% { opacity: 1; transform: scale(1.03); }
+    }
+
+    .animate-reverse-pulse {
+      animation: pulseGlow 0.55s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="relative w-full h-full">
+
+  <!-- ゲーム描画用Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- 常時表示のミニマルHUD -->
+  <div class="fixed inset-x-0 top-0 p-4 sm:p-6 flex items-start justify-between pointer-events-none z-20">
+    <!-- 左上：スコア & ハイスコア -->
+    <div class="flex flex-col gap-1">
+      <div class="flex items-baseline gap-2">
+        <span class="text-[11px] uppercase tracking-[0.22em] text-sky-400/70 font-semibold">SCORE</span>
+        <span id="hudScore" class="font-mono-num text-2xl sm:text-4xl font-bold tracking-tight text-white drop-shadow-[0_0_12px_rgba(56,189,248,0.35)]">0</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <span class="uppercase tracking-[0.18em] text-[10px] text-slate-500">BEST</span>
+        <span id="hudBest" class="font-mono-num font-medium text-slate-300">0</span>
+      </div>
+    </div>
+
+    <!-- 右上：距離倍率 & サウンドミュート -->
+    <div class="flex items-center gap-3 pointer-events-auto">
+      <div id="multBadge" class="px-3 py-1.5 rounded-xl bg-slate-900/70 border border-sky-400/25 backdrop-blur-md flex items-baseline gap-1.5 transition-colors duration-200">
+        <span class="text-[10px] uppercase tracking-[0.18em] text-slate-400">MULT</span>
+        <span id="hudMult" class="font-mono-num text-base sm:text-lg font-bold text-sky-300">x1.0</span>
+      </div>
+
+      <button id="muteBtn" aria-label="サウンド切り替え" class="p-2.5 rounded-xl bg-slate-900/70 border border-slate-700/60 hover:border-sky-400/50 text-slate-300 hover:text-white backdrop-blur-md transition-all cursor-pointer">
+        <!-- サウンドONアイコン -->
+        <svg id="iconSoundOn" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"></path>
+        </svg>
+        <!-- サウンドOFFアイコン -->
+        <svg id="iconSoundOff" class="w-5 h-5 hidden text-slate-500" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M23 9l-6 6M17 9l6 6"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 回転反転予告インジケーター（画面上部中央） -->
+  <div id="reverseBanner" class="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 pointer-events-none z-20 transition-opacity duration-300 opacity-0">
+    <div class="animate-reverse-pulse px-4 py-1.5 rounded-full bg-rose-500/15 border border-rose-400/50 text-rose-300 text-xs sm:text-sm font-bold tracking-[0.28em] uppercase shadow-[0_0_24px_rgba(244,63,94,0.35)]">
+      ⟳ REVERSE INCOMING
+    </div>
+  </div>
+
+  <!-- タイトルオーバーレイ -->
+  <div id="titleOverlay" class="ui-overlay fixed inset-0 flex items-center justify-center p-4 z-10 pointer-events-none">
+    <div class="glass-panel rounded-3xl p-6 sm:p-8 max-w-md w-full text-center pointer-events-auto">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-400/25 text-sky-300 text-[11px] font-mono-num tracking-widest mb-4">
+        r = a · e^(bθ)
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-black tracking-[0.14em] text-white mb-2">
+        LOG SPIRAL
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-300/90 leading-relaxed mb-6">
+        回転し続ける対数螺旋の壁と中央コアを避けて生き残れ。<br />
+        <span class="text-sky-300 font-medium">中心に近いほど通路は狭く、スコア倍率が上昇</span>します。
+      </p>
+
+      <div class="grid grid-cols-2 gap-2.5 text-left text-xs text-slate-300 mb-6 bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/80">
+        <div class="flex items-start gap-2">
+          <span class="text-sky-400 mt-0.5">◈</span>
+          <span><strong class="text-white block">移動操作</strong>マウス / タッチ / WASD・矢印</span>
+        </div>
+        <div class="flex items-start gap-2">
+          <span class="text-amber-400 mt-0.5">✦</span>
+          <span><strong class="text-white block">ボーナスオーブ</strong>取得で高倍率スコア加算</span>
+        </div>
+      </div>
+
+      <button id="startBtn" class="btn-neon w-full py-3.5 rounded-2xl text-white font-bold tracking-[0.18em] text-sm uppercase">
+        START GAME
+      </button>
+      <p class="mt-3 text-[11px] text-slate-400 tracking-wide">
+        安全な通路内をクリック / タップ、または <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-mono-num">SPACE</kbd> で即開始
+      </p>
+    </div>
+  </div>
+
+  <!-- ゲームオーバーオーバーレイ -->
+  <div id="gameOverOverlay" class="ui-overlay ui-hidden fixed inset-0 flex items-center justify-center p-4 z-10 pointer-events-none">
+    <div class="glass-panel rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center pointer-events-auto border-rose-500/30">
+      <div class="text-[11px] font-bold tracking-[0.3em] text-rose-400 uppercase mb-1">COLLISION DETECTED</div>
+      <h2 class="text-2xl sm:text-3xl font-black tracking-[0.12em] text-white mb-5">GAME OVER</h2>
+
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="bg-slate-950/60 rounded-2xl p-3.5 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1">SCORE</div>
+          <div id="finalScore" class="font-mono-num text-2xl font-bold text-white">0</div>
+        </div>
+        <div class="bg-slate-950/60 rounded-2xl p-3.5 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-1">BEST</div>
+          <div id="finalBest" class="font-mono-num text-2xl font-bold text-sky-300">0</div>
+        </div>
+      </div>
+
+      <div id="newRecordBadge" class="hidden mb-4 inline-block px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-300 text-xs font-bold tracking-[0.2em] uppercase">
+        ★ NEW HIGH SCORE
+      </div>
+
+      <div class="flex justify-between text-xs text-slate-400 px-2 mb-6 font-mono-num">
+        <span>TIME: <strong id="finalTime" class="text-slate-200">0.0s</strong></span>
+        <span>ORBS: <strong id="finalOrbs" class="text-amber-300">0</strong></span>
+      </div>
+
+      <button id="retryBtn" class="btn-neon w-full py-3.5 rounded-2xl text-white font-bold tracking-[0.18em] text-sm uppercase">
+        RETRY
+      </button>
+      <p class="mt-3 text-[11px] text-slate-400 tracking-wide">
+        <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-mono-num">SPACE</kbd> / <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-mono-num">R</kbd> または通路内クリックで即リトライ
+      </p>
+    </div>
+  </div>
+
+  <!-- 画面下部の控えめな操作ヒント（プレイ中のみ薄く表示） -->
+  <div id="bottomHint" class="fixed bottom-4 left-1/2 -translate-x-1/2 pointer-events-none z-10 text-[11px] text-slate-500 tracking-widest uppercase transition-opacity duration-500 opacity-0">
+    MOUSE / TOUCH / WASD
+  </div>
+
+  <script>
+    /**
+     * LOG SPIRAL - 対数螺旋回避アクションゲーム
+     * 
+     * 数学的定義:
+     * 対数螺旋 r = e^(b * (φ + phase + ψ))
+     * 極座標 (r, φ) における位相差:
+     *   ψ = ((Math.log(r) / b) - φ - phase) mod 2π   (範囲 [0, 2π))
+     * 壁の中心線は ψ = 0。
+     * 壁の角度幅を W_wall とするとき、壁の領域は min(ψ, 2π - ψ) <= W_wall / 2。
+     * 対数螺旋の法線方向勾配の大きさ |∇ψ| = sqrt(1 + b^2) / (b * r) より、
+     * 点 (r, φ) から壁表面までのユークリッド距離（px）は極めて高精度に次式で求まる:
+     *   dist_px = (d_psi - W_wall / 2) * (b * r) / sqrt(1 + b^2)
+     * これにより、描画される壁のポリゴン境界と自機の円形当たり判定をピクセル単位で完全一致させる。
+     */
+
+    (() => {
+      'use strict';
+
+      // ==========================================
+      // DOM要素の取得
+      // ==========================================
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      const hudScore = document.getElementById('hudScore');
+      const hudBest = document.getElementById('hudBest');
+      const hudMult = document.getElementById('hudMult');
+      const multBadge = document.getElementById('multBadge');
+      const reverseBanner = document.getElementById('reverseBanner');
+      const titleOverlay = document.getElementById('titleOverlay');
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const bottomHint = document.getElementById('bottomHint');
+
+      const startBtn = document.getElementById('startBtn');
+      const retryBtn = document.getElementById('retryBtn');
+      const muteBtn = document.getElementById('muteBtn');
+      const iconSoundOn = document.getElementById('iconSoundOn');
+      const iconSoundOff = document.getElementById('iconSoundOff');
+
+      const finalScoreEl = document.getElementById('finalScore');
+      const finalBestEl = document.getElementById('finalBest');
+      const finalTimeEl = document.getElementById('finalTime');
+      const finalOrbsEl = document.getElementById('finalOrbs');
+      const newRecordBadge = document.getElementById('newRecordBadge');
+
+      // ==========================================
+      // 定数と数学パラメータ
+      // ==========================================
+      const TWO_PI = Math.PI * 2;
+      const SPIRAL_B = 0.155; // 螺旋の広がり係数 (1周で e^(2π*0.155) ≈ 2.65倍)
+      const WALL_ANGULAR_WIDTH = 0.68; // 壁の角度幅 (rad)。通路は 2π - 0.68 ≈ 5.60 rad
+      const WALL_HALF_WIDTH = WALL_ANGULAR_WIDTH * 0.5;
+      const NORMAL_FACTOR = SPIRAL_B / Math.sqrt(1 + SPIRAL_B * SPIRAL_B); // 法線距離変換係数
+      const STORAGE_KEY_BEST = 'log_spiral_best_score_v1';
+
+      // ==========================================
+      // Web Audio API シンセサイザー（外部アセット不要）
+      // ==========================================
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.muted = false;
+          this.orbCombo = 0;
+          this.lastOrbTime = 0;
+          // ペンタトニックスケール (C5, D5, E5, G5, A5, C6, D6, E6)
+          this.scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51];
+        }
+
+        init() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        toggleMute() {
+          this.muted = !this.muted;
+          iconSoundOn.classList.toggle('hidden', this.muted);
+          iconSoundOff.classList.toggle('hidden', !this.muted);
+          return this.muted;
+        }
+
+        playStart() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const freqs = [329.63, 440.0, 659.25];
+          freqs.forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f, now + idx * 0.045);
+            gain.gain.setValueAtTime(0.0001, now + idx * 0.045);
+            gain.gain.exponentialRampToValueAtTime(0.09, now + idx * 0.045 + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.045 + 0.35);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now + idx * 0.045);
+            osc.stop(now + idx * 0.045 + 0.38);
+          });
+        }
+
+        playOrb() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          if (now - this.lastOrbTime < 3.5) {
+            this.orbCombo = Math.min(this.orbCombo + 1, this.scale.length - 1);
+          } else {
+            this.orbCombo = 0;
+          }
+          this.lastOrbTime = now;
+
+          const freq = this.scale[this.orbCombo];
+          const osc = this.ctx.createOscillator();
+          const osc2 = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(freq * 1.5, now);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.11, now + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+
+          osc.connect(gain);
+          osc2.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start(now);
+          osc2.start(now);
+          osc.stop(now + 0.34);
+          osc2.stop(now + 0.34);
+        }
+
+        playReverseWarn() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(280, now + 0.14);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.06, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.18);
+        }
+
+        playReverseShift() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(900, now);
+          filter.frequency.exponentialRampToValueAtTime(180, now + 0.45);
+
+          osc.frequency.setValueAtTime(360, now);
+          osc.frequency.exponentialRampToValueAtTime(140, now + 0.45);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.075, now + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.5);
+        }
+
+        playGameOver() {
+          if (this.muted) return;
+          this.init();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          // 低い衝撃音
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(170, now);
+          osc.frequency.exponentialRampToValueAtTime(38, now + 0.45);
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(750, now);
+          filter.frequency.exponentialRampToValueAtTime(100, now + 0.45);
+
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.5);
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      // ==========================================
+      // ゲーム状態管理
+      // ==========================================
+      const state = {
+        mode: 'TITLE', // 'TITLE' | 'PLAYING' | 'GAMEOVER'
+        width: 0,
+        height: 0,
+        cx: 0,
+        cy: 0,
+        minDim: 0,
+        maxDim: 0,
+        coreRadius: 42,
+        outerRadius: 360,
+        playerRadius: 7,
+
+        // 螺旋パラメータ
+        phase: 0,
+        direction: 1, // 1: ズームイン(反時計回り), -1: ズームアウト(時計回り)
+        currentSpeed: 1.35,
+        targetSpeed: 1.35,
+
+        // 時間・スコア
+        elapsed: 0,
+        score: 0,
+        bestScore: 0,
+        multiplier: 1.0,
+        orbsCollected: 0,
+        gameOverCooldown: 0,
+
+        // 反転ギミック
+        nextReverseTime: 13.0,
+        isWarningReverse: false,
+        reverseWarnTimer: 0,
+        reverseWarnBeepAccum: 0,
+        colorBlend: 0, // 0 = 通常(シアン), 1 = 反転モード/予告(ローズ)
+
+        // カメラシェイク・演出
+        shakeIntensity: 0,
+        corePulse: 0,
+        nearMissIntensity: 0,
+
+        // 自機
+        player: {
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          trail: []
+        },
+
+        // 入力
+        inputMode: 'POINTER', // 'POINTER' | 'KEYBOARD'
+        pointer: {
+          x: 0,
+          y: 0,
+          active: false,
+          hasMoved: false
+        },
+        keys: {
+          up: false,
+          down: false,
+          left: false,
+          right: false
+        },
+
+        // オブジェクト配列
+        orbs: [],
+        particles: [],
+        floatingTexts: [],
+        orbSpawnTimer: 1.5
+      };
+
+      // ハイスコア読み込み
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_BEST);
+        if (saved) {
+          state.bestScore = parseInt(saved, 10) || 0;
+          hudBest.textContent = state.bestScore.toLocaleString();
+        }
+      } catch (e) {
+        // localStorage利用不可環境へのフォールバック
+      }
+
+      // ==========================================
+      // 数学・当たり判定ユーティリティ
+      // ==========================================
+
+      /**
+       * 正の剰余 [0, TWO_PI) を返す
+       */
+      function modTwoPi(angle) {
+        return ((angle % TWO_PI) + TWO_PI) % TWO_PI;
+      }
+
+      /**
+       * 座標 (x, y) における対数螺旋の壁・コアとの距離情報を計算
+       * @returns {{ r: number, phi: number, psi: number, wallDistPx: number, coreDistPx: number, isColliding: boolean }}
+       */
+      function evaluatePosition(x, y, phase = state.phase) {
+        const dx = x - state.cx;
+        const dy = y - state.cy;
+        const r = Math.hypot(dx, dy);
+        const coreDistPx = r - state.coreRadius - state.playerRadius;
+
+        if (r < 1e-4) {
+          return { r: 0, phi: 0, psi: 0, wallDistPx: -100, coreDistPx: -state.coreRadius, isColliding: true };
+        }
+
+        const phi = Math.atan2(dy, dx);
+        // 位相差 ψ = (ln(r)/b - φ - phase) mod 2π
+        const psi = modTwoPi((Math.log(r) / SPIRAL_B) - phi - phase);
+        // 壁の中心線 (ψ = 0) からの角度距離 [0, π]
+        const distFromWallCenter = Math.min(psi, TWO_PI - psi);
+        // 壁の縁からの角度余裕（正なら通路内、負なら壁内）
+        const angularClearance = distFromWallCenter - WALL_HALF_WIDTH;
+        // 法線方向のピクセル距離（自機半径を差し引いた実クリアランス）
+        const wallDistPx = angularClearance * r * NORMAL_FACTOR - state.playerRadius;
+
+        const isColliding = (coreDistPx <= 0) || (wallDistPx <= 0);
+        return { r, phi, psi, wallDistPx, coreDistPx, isColliding };
+      }
+
+      /**
+       * 通路中央 (ψ = π) の安全なスポーン座標を取得
+       */
+      function getSafeSpawnPoint(radiusRatio = 0.52) {
+        const r = state.coreRadius + (state.outerRadius - state.coreRadius) * radiusRatio;
+        // ψ = π となる角度 φ = ln(r)/b - phase - π
+        const phi = (Math.log(r) / SPIRAL_B) - state.phase - Math.PI;
+        return {
+          x: state.cx + r * Math.cos(phi),
+          y: state.cy + r * Math.sin(phi)
+        };
+      }
+
+      /**
+       * 距離 r からリアルタイムスコア倍率 (1.0 〜 5.0) を算出
+       */
+      function computeMultiplier(r) {
+        const minR = state.coreRadius + state.playerRadius + 10;
+        const maxR = state.outerRadius;
+        const t = Math.max(0, Math.min(1, (r - minR) / Math.max(1, maxR - minR)));
+        // 中心に近いほど急激に上がるカーブ (1.0 + 4.0 * (1 - t)^2.1)
+        const mult = 1.0 + 4.0 * Math.pow(1 - t, 2.1);
+        return Math.round(mult * 10) / 10;
+      }
+
+      /**
+       * 2色の線形補間
+       */
+      function lerpColor(c1, c2, t) {
+        const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+        const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+        const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+        return `rgb(${r}, ${g}, ${b})`;
+      }
+
+      function lerpColorRGBA(c1, c2, t, a) {
+        const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+        const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+        const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      }
+
+      // ==========================================
+      // リサイズ処理（レスポンシブ & Retina対応）
+      // ==========================================
+      function handleResize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        state.width = window.innerWidth;
+        state.height = window.innerHeight;
+        canvas.width = Math.floor(state.width * dpr);
+        canvas.height = Math.floor(state.height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        state.cx = state.width * 0.5;
+        state.cy = state.height * 0.5;
+        state.minDim = Math.min(state.width, state.height);
+        state.maxDim = Math.hypot(state.width, state.height) * 0.5;
+
+        // 画面サイズに応じたスケーリング（スマホ〜大画面で同一バランス）
+        state.coreRadius = Math.max(28, Math.min(54, state.minDim * 0.072));
+        state.outerRadius = Math.max(140, state.minDim * 0.465);
+        state.playerRadius = Math.max(5.5, Math.min(8.5, state.minDim * 0.0115));
+
+        if (!state.pointer.hasMoved) {
+          const safe = getSafeSpawnPoint();
+          state.pointer.x = safe.x;
+          state.pointer.y = safe.y;
+          state.player.x = safe.x;
+          state.player.y = safe.y;
+        }
+      }
+
+      // ==========================================
+      // ゲームライフサイクル
+      // ==========================================
+      function startGame(startX = null, startY = null) {
+        sound.init();
+        sound.playStart();
+
+        state.mode = 'PLAYING';
+        state.elapsed = 0;
+        state.score = 0;
+        state.orbsCollected = 0;
+        state.direction = 1;
+        state.currentSpeed = 1.45;
+        state.targetSpeed = 1.45;
+        state.nextReverseTime = 12.5 + Math.random() * 3.5;
+        state.isWarningReverse = false;
+        state.reverseWarnTimer = 0;
+        state.shakeIntensity = 0;
+        state.nearMissIntensity = 0;
+
+        state.orbs = [];
+        state.particles = [];
+        state.floatingTexts = [];
+        state.orbSpawnTimer = 1.2;
+
+        // 開始位置の決定（指定座標が安全ならそこ、そうでなければ安全な通路中央）
+        let spawn = getSafeSpawnPoint(0.5);
+        if (startX !== null && startY !== null) {
+          const evalRes = evaluatePosition(startX, startY);
+          if (!evalRes.isColliding && evalRes.r <= state.outerRadius) {
+            spawn = { x: startX, y: startY };
+          }
+        }
+
+        state.player.x = spawn.x;
+        state.player.y = spawn.y;
+        state.player.vx = 0;
+        state.player.vy = 0;
+        state.player.trail = [];
+
+        if (state.inputMode === 'POINTER') {
+          state.pointer.x = spawn.x;
+          state.pointer.y = spawn.y;
+        }
+
+        // UI更新
+        titleOverlay.classList.add('ui-hidden');
+        gameOverOverlay.classList.add('ui-hidden');
+        reverseBanner.style.opacity = '0';
+        bottomHint.style.opacity = '0.7';
+        setTimeout(() => {
+          if (state.mode === 'PLAYING') bottomHint.style.opacity = '0';
+        }, 3500);
+
+        // スタート演出パーティクル
+        spawnParticles(spawn.x, spawn.y, '#38bdf8', 18, 160);
+      }
+
+      function triggerGameOver() {
+        if (state.mode !== 'PLAYING') return;
+        state.mode = 'GAMEOVER';
+        state.gameOverCooldown = 0.35;
+        state.shakeIntensity = 14;
+        state.isWarningReverse = false;
+        reverseBanner.style.opacity = '0';
+
+        sound.playGameOver();
+        spawnParticles(state.player.x, state.player.y, '#fb7185', 38, 280);
+        spawnParticles(state.player.x, state.player.y, '#ffffff', 16, 180);
+
+        const finalScore = Math.floor(state.score);
+        let isNewRecord = false;
+        if (finalScore > state.bestScore) {
+          state.bestScore = finalScore;
+          isNewRecord = true;
+          try {
+            localStorage.setItem(STORAGE_KEY_BEST, String(state.bestScore));
+          } catch (e) {}
+        }
+
+        hudBest.textContent = state.bestScore.toLocaleString();
+        finalScoreEl.textContent = finalScore.toLocaleString();
+        finalBestEl.textContent = state.bestScore.toLocaleString();
+        finalTimeEl.textContent = `${state.elapsed.toFixed(1)}s`;
+        finalOrbsEl.textContent = String(state.orbsCollected);
+        newRecordBadge.classList.toggle('hidden', !isNewRecord);
+
+        gameOverOverlay.classList.remove('ui-hidden');
+      }
+
+      // ==========================================
+      // パーティクル・オーブ・フローティングテキスト
+      // ==========================================
+      function spawnParticles(x, y, color, count, maxSpeed) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * TWO_PI;
+          const speed = (0.2 + Math.random() * 0.8) * maxSpeed;
+          state.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1.0,
+            decay: 1.4 + Math.random() * 1.4,
+            size: 1.5 + Math.random() * 3.0,
+            color
+          });
+        }
+      }
+
+      function spawnFloatingText(x, y, text, color = '#fbbf24') {
+        state.floatingTexts.push({
+          x,
+          y,
+          text,
+          color,
+          life: 1.0,
+          vy: -42
+        });
+      }
+
+      function spawnOrb() {
+        // 通路中央付近 (ψ = π ± 0.45) に出現させ、螺旋に沿って流す
+        const minR = state.coreRadius * 1.65;
+        const maxR = state.outerRadius * 0.88;
+        const r = minR + Math.random() * (maxR - minR);
+        const psiOffset = (Math.random() - 0.5) * 0.8;
+        const psi = Math.PI + psiOffset;
+
+        // 現在の回転方向に合わせて緩やかに内側または外側へドリフトさせる
+        const radialDrift = state.direction * (14 + Math.random() * 18);
+
+        state.orbs.push({
+          r,
+          psi,
+          radialDrift,
+          life: 0,
+          maxLife: 9.0,
+          radius: Math.max(6.5, state.playerRadius * 1.15),
+          pulsePhase: Math.random() * TWO_PI
+        });
+      }
+
+      // ==========================================
+      // 更新ロジック (固定ではなく可変dt + サブステップ衝突判定)
+      // ==========================================
+      function update(dt) {
+        // 演出用タイマー更新
+        if (state.shakeIntensity > 0) {
+          state.shakeIntensity = Math.max(0, state.shakeIntensity - dt * 36);
+        }
+        state.corePulse += dt * 3.2;
+
+        if (state.mode === 'GAMEOVER' && state.gameOverCooldown > 0) {
+          state.gameOverCooldown = Math.max(0, state.gameOverCooldown - dt);
+        }
+
+        // 螺旋の回転更新
+        const prevPhase = state.phase;
+
+        if (state.mode === 'PLAYING') {
+          state.elapsed += dt;
+
+          // 経過時間に応じた基本速度の上昇 (1.45 -> 最大 3.85 rad/s)
+          const baseSpeed = Math.min(3.85, 1.45 + state.elapsed * 0.042);
+
+          // 回転反転ギミックの制御
+          if (!state.isWarningReverse && state.elapsed >= state.nextReverseTime) {
+            state.isWarningReverse = true;
+            state.reverseWarnTimer = 2.2; // 2.2秒の予告
+            state.reverseWarnBeepAccum = 0;
+            reverseBanner.style.opacity = '1';
+            sound.playReverseWarn();
+          }
+
+          if (state.isWarningReverse) {
+            state.reverseWarnTimer -= dt;
+            state.reverseWarnBeepAccum += dt;
+            if (state.reverseWarnBeepAccum >= 0.55) {
+              state.reverseWarnBeepAccum = 0;
+              sound.playReverseWarn();
+            }
+            // 予告後半は少し減速して反転に備える
+            state.targetSpeed = state.direction * baseSpeed * 0.65;
+
+            if (state.reverseWarnTimer <= 0) {
+              state.isWarningReverse = false;
+              state.direction *= -1;
+              state.nextReverseTime = state.elapsed + 12.0 + Math.random() * 5.0;
+              reverseBanner.style.opacity = '0';
+              state.shakeIntensity = 6;
+              sound.playReverseShift();
+            }
+          } else {
+            state.targetSpeed = state.direction * baseSpeed;
+          }
+
+          // 滑らかな加減速（反転時に急激に方向が変わらないようにする）
+          const accelRate = 2.6;
+          state.currentSpeed += (state.targetSpeed - state.currentSpeed) * Math.min(1, dt * accelRate);
+          state.phase += state.currentSpeed * dt;
+
+          // カラーテーマのスムーズ補間（逆回転または予告時はローズ系へ）
+          const targetBlend = (state.isWarningReverse || state.direction < 0) ? 1.0 : 0.0;
+          state.colorBlend += (targetBlend - state.colorBlend) * Math.min(1, dt * 3.5);
+
+          // 自機の移動処理
+          const prevX = state.player.x;
+          const prevY = state.player.y;
+
+          if (state.inputMode === 'POINTER') {
+            // 高レスポンス追従（極端に滑らかかつ遅延感なし）
+            const followFactor = 1 - Math.exp(-32 * dt);
+            state.player.x += (state.pointer.x - state.player.x) * followFactor;
+            state.player.y += (state.pointer.y - state.player.y) * followFactor;
+          } else {
+            // キーボード移動（WASD / 矢印）
+            let ix = (state.keys.right ? 1 : 0) - (state.keys.left ? 1 : 0);
+            let iy = (state.keys.down ? 1 : 0) - (state.keys.up ? 1 : 0);
+            const len = Math.hypot(ix, iy);
+            if (len > 0) {
+              ix /= len;
+              iy /= len;
+            }
+            const maxMoveSpeed = state.minDim * 0.62;
+            const kbSmooth = 1 - Math.exp(-18 * dt);
+            state.player.vx += (ix * maxMoveSpeed - state.player.vx) * kbSmooth;
+            state.player.vy += (iy * maxMoveSpeed - state.player.vy) * kbSmooth;
+            state.player.x += state.player.vx * dt;
+            state.player.y += state.player.vy * dt;
+          }
+
+          // 外周リング内にクランプ（画面外逃亡防止）
+          const dxOut = state.player.x - state.cx;
+          const dyOut = state.player.y - state.cy;
+          const distOut = Math.hypot(dxOut, dyOut);
+          const maxAllowedR = state.outerRadius - state.playerRadius;
+          if (distOut > maxAllowedR && distOut > 0) {
+            state.player.x = state.cx + (dxOut / distOut) * maxAllowedR;
+            state.player.y = state.cy + (dyOut / distOut) * maxAllowedR;
+          }
+
+          // 高速移動時の壁すり抜け（トンネル効果）を防ぐサブステップ当たり判定
+          const moveDist = Math.hypot(state.player.x - prevX, state.player.y - prevY);
+          const steps = Math.max(1, Math.ceil(moveDist / Math.max(2.5, state.playerRadius * 0.6)));
+          let collided = false;
+          let latestEval = null;
+
+          for (let s = 1; s <= steps; s++) {
+            const t = s / steps;
+            const sx = prevX + (state.player.x - prevX) * t;
+            const sy = prevY + (state.player.y - prevY) * t;
+            const sPhase = prevPhase + (state.phase - prevPhase) * t;
+            const ev = evaluatePosition(sx, sy, sPhase);
+            latestEval = ev;
+            if (ev.isColliding) {
+              state.player.x = sx;
+              state.player.y = sy;
+              collided = true;
+              break;
+            }
+          }
+
+          if (collided) {
+            triggerGameOver();
+          } else if (latestEval) {
+            // ニアミス緊張度の計算
+            const minClearance = Math.min(latestEval.wallDistPx, latestEval.coreDistPx);
+            const targetNear = minClearance < 18 ? (1 - minClearance / 18) : 0;
+            state.nearMissIntensity += (targetNear - state.nearMissIntensity) * Math.min(1, dt * 12);
+
+            // 距離倍率 & スコア加算
+            state.multiplier = computeMultiplier(latestEval.r);
+            state.score += 24 * state.multiplier * dt;
+
+            // 自機トレイル更新
+            state.player.trail.push({ x: state.player.x, y: state.player.y, mult: state.multiplier });
+            if (state.player.trail.length > 22) {
+              state.player.trail.shift();
+            }
+
+            // オーブのスポーンと更新
+            state.orbSpawnTimer -= dt;
+            if (state.orbSpawnTimer <= 0 && state.orbs.length < 3) {
+              spawnOrb();
+              state.orbSpawnTimer = 2.6 + Math.random() * 1.8;
+            }
+
+            for (let i = state.orbs.length - 1; i >= 0; i--) {
+              const orb = state.orbs[i];
+              orb.life += dt;
+              orb.pulsePhase += dt * 5;
+              orb.r += orb.radialDrift * dt;
+
+              // 範囲外や寿命切れで消去
+              if (orb.life >= orb.maxLife || orb.r < state.coreRadius * 1.35 || orb.r > state.outerRadius * 0.96) {
+                state.orbs.splice(i, 1);
+                continue;
+              }
+
+              // オーブの現在座標（常に螺旋通路内に正確に配置される）
+              const orbPhi = (Math.log(orb.r) / SPIRAL_B) - state.phase - orb.psi;
+              const ox = state.cx + orb.r * Math.cos(orbPhi);
+              const oy = state.cy + orb.r * Math.sin(orbPhi);
+
+              // 取得判定
+              const distToPlayer = Math.hypot(state.player.x - ox, state.player.y - oy);
+              if (distToPlayer <= state.playerRadius + orb.radius + 6) {
+                const bonus = Math.round(100 * state.multiplier);
+                state.score += bonus;
+                state.orbsCollected += 1;
+                sound.playOrb();
+                spawnParticles(ox, oy, '#fbbf24', 18, 200);
+                spawnFloatingText(ox, oy - 12, `+${bonus}`, '#fde047');
+                state.orbs.splice(i, 1);
+              }
+            }
+          }
+
+          // HUD更新
+          hudScore.textContent = Math.floor(state.score).toLocaleString();
+          hudMult.textContent = `x${state.multiplier.toFixed(1)}`;
+          if (state.multiplier >= 3.5) {
+            hudMult.className = 'font-mono-num text-base sm:text-lg font-bold text-amber-300';
+            multBadge.style.borderColor = 'rgba(251, 191, 36, 0.55)';
+          } else if (state.multiplier >= 2.2) {
+            hudMult.className = 'font-mono-num text-base sm:text-lg font-bold text-cyan-200';
+            multBadge.style.borderColor = 'rgba(56, 189, 248, 0.45)';
+          } else {
+            hudMult.className = 'font-mono-num text-base sm:text-lg font-bold text-sky-300';
+            multBadge.style.borderColor = 'rgba(56, 189, 248, 0.22)';
+          }
+        } else {
+          // タイトル・ゲームオーバー時は背景の螺旋をゆったり回す
+          state.phase += 0.55 * dt;
+          state.colorBlend += (0 - state.colorBlend) * Math.min(1, dt * 2.0);
+        }
+
+        // パーティクル更新
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+          const p = state.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= Math.pow(0.08, dt);
+          p.vy *= Math.pow(0.08, dt);
+          p.life -= p.decay * dt;
+          if (p.life <= 0) {
+            state.particles.splice(i, 1);
+          }
+        }
+
+        // フローティングテキスト更新
+        for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = state.floatingTexts[i];
+          ft.y += ft.vy * dt;
+          ft.life -= dt * 1.25;
+          if (ft.life <= 0) {
+            state.floatingTexts.splice(i, 1);
+          }
+        }
+      }
+
+      // ==========================================
+      // 描画ロジック
+      // ==========================================
+      function draw() {
+        const w = state.width;
+        const h = state.height;
+
+        // 1. 背景グラデーション
+        const bgGrad = ctx.createRadialGradient(state.cx, state.cy, state.coreRadius * 0.5, state.cx, state.cy, state.maxDim);
+        bgGrad.addColorStop(0, lerpColor([10, 20, 46], [36, 12, 32], state.colorBlend * 0.65));
+        bgGrad.addColorStop(0.55, '#060b1a');
+        bgGrad.addColorStop(1, '#03050d');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.save();
+
+        // カメラシェイク適用
+        if (state.shakeIntensity > 0.2) {
+          const sx = (Math.random() - 0.5) * state.shakeIntensity;
+          const sy = (Math.random() - 0.5) * state.shakeIntensity;
+          ctx.translate(sx, sy);
+        }
+
+        // 2. 同心円の倍率ガイドグリッドと外周境界
+        drawBackgroundGrid();
+
+        // 3. 対数螺旋の壁（当たり判定と完全に一致する2本の螺旋境界ポリゴン）
+        drawLogarithmicSpiralWall();
+
+        // 4. ボーナスオーブ
+        drawOrbs();
+
+        // 5. 中央コア（特異点エリア）
+        drawCenterCore();
+
+        // 6. 自機または待機カーソルプレビュー
+        if (state.mode === 'PLAYING') {
+          drawPlayer();
+        } else {
+          drawPointerPreview();
+        }
+
+        // 7. パーティクル & フローティングテキスト
+        drawParticlesAndTexts();
+
+        ctx.restore();
+      }
+
+      function drawBackgroundGrid() {
+        ctx.save();
+
+        // 外周の有効プレイエリア境界リング
+        ctx.beginPath();
+        ctx.arc(state.cx, state.cy, state.outerRadius, 0, TWO_PI);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // 倍率目安の同心円 (x2.0, x3.0, x4.0 付近)
+        const rings = [0.22, 0.45, 0.72];
+        rings.forEach((ratio) => {
+          const r = state.coreRadius + (state.outerRadius - state.coreRadius) * ratio;
+          ctx.beginPath();
+          ctx.arc(state.cx, state.cy, r, 0, TWO_PI);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.055)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 8]);
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        // 放射状の極座標ガイド線（ごく薄く）
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.035)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * TWO_PI;
+          ctx.beginPath();
+          ctx.moveTo(state.cx + Math.cos(a) * state.coreRadius, state.cy + Math.sin(a) * state.coreRadius);
+          ctx.lineTo(state.cx + Math.cos(a) * state.outerRadius, state.cy + Math.sin(a) * state.outerRadius);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      /**
+       * 対数螺旋の壁を描画
+       * 境界1: ψ = -WALL_HALF_WIDTH  => φ = θ - phase + WALL_HALF_WIDTH
+       * 境界2: ψ = +WALL_HALF_WIDTH  => φ = θ - phase - WALL_HALF_WIDTH
+       */
+      function drawLogarithmicSpiralWall() {
+        const rMin = state.coreRadius * 0.45;
+        const rMax = state.maxDim * 1.45;
+        const thetaMin = Math.log(rMin) / SPIRAL_B;
+        const thetaMax = Math.log(rMax) / SPIRAL_B;
+        const step = 0.075; // 滑らかな曲線のための角度刻み
+
+        const edge1 = [];
+        const edge2 = [];
+
+        for (let theta = thetaMin; theta <= thetaMax + step; theta += step) {
+          const t = Math.min(theta, thetaMax);
+          const r = Math.exp(SPIRAL_B * t);
+          const phi1 = t - state.phase + WALL_HALF_WIDTH;
+          const phi2 = t - state.phase - WALL_HALF_WIDTH;
+
+          edge1.push({
+            x: state.cx + r * Math.cos(phi1),
+            y: state.cy + r * Math.sin(phi1)
+          });
+          edge2.push({
+            x: state.cx + r * Math.cos(phi2),
+            y: state.cy + r * Math.sin(phi2)
+          });
+        }
+
+        // 壁の塗りつぶしパスを作成
+        ctx.beginPath();
+        ctx.moveTo(edge1[0].x, edge1[0].y);
+        for (let i = 1; i < edge1.length; i++) {
+          ctx.lineTo(edge1[i].x, edge1[i].y);
+        }
+        for (let i = edge2.length - 1; i >= 0; i--) {
+          ctx.lineTo(edge2[i].x, edge2[i].y);
+        }
+        ctx.closePath();
+
+        // 壁本体の色（通常: ディープシアン、反転時: ディープローズ）
+        const cyanBase = [14, 165, 233];
+        const roseBase = [244, 63, 94];
+        const warnPulse = state.isWarningReverse ? (0.5 + 0.5 * Math.sin(state.elapsed * 18)) * 0.14 : 0;
+
+        ctx.fillStyle = lerpColorRGBA(cyanBase, roseBase, state.colorBlend, 0.24 + warnPulse);
+        ctx.fill();
+
+        // 壁の両輪郭線（視認性の高いシャープな発光エッジ）
+        const edgeColor = lerpColor([56, 189, 248], [251, 113, 133], state.colorBlend);
+        ctx.strokeStyle = edgeColor;
+        ctx.lineWidth = 2.0;
+        ctx.shadowColor = edgeColor;
+        ctx.shadowBlur = 10;
+
+        ctx.beginPath();
+        ctx.moveTo(edge1[0].x, edge1[0].y);
+        for (let i = 1; i < edge1.length; i++) {
+          ctx.lineTo(edge1[i].x, edge1[i].y);
+        }
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(edge2[0].x, edge2[0].y);
+        for (let i = 1; i < edge2.length; i++) {
+          ctx.lineTo(edge2[i].x, edge2[i].y);
+        }
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+      }
+
+      function drawCenterCore() {
+        const pulse = Math.sin(state.corePulse) * 2.2;
+        const coreColor = lerpColor([56, 189, 248], [244, 63, 94], state.colorBlend);
+
+        // コア外周の危険オーラ
+        const auraGrad = ctx.createRadialGradient(
+          state.cx, state.cy, state.coreRadius * 0.6,
+          state.cx, state.cy, state.coreRadius * 1.65
+        );
+        auraGrad.addColorStop(0, lerpColorRGBA([14, 165, 233], [244, 63, 94], state.colorBlend, 0.35));
+        auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = auraGrad;
+        ctx.beginPath();
+        ctx.arc(state.cx, state.cy, state.coreRadius * 1.65, 0, TWO_PI);
+        ctx.fill();
+
+        // コア本体（漆黒の特異点）
+        ctx.beginPath();
+        ctx.arc(state.cx, state.cy, state.coreRadius, 0, TWO_PI);
+        ctx.fillStyle = '#03050c';
+        ctx.fill();
+
+        // コア境界線（当たり判定境界と完全一致）
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = coreColor;
+        ctx.shadowColor = coreColor;
+        ctx.shadowBlur = 14;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // コア内部の回転幾何学リング
+        ctx.save();
+        ctx.translate(state.cx, state.cy);
+        ctx.rotate(-state.phase * 1.5);
+        ctx.strokeStyle = lerpColorRGBA([125, 211, 252], [253, 164, 175], state.colorBlend, 0.45);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.max(6, state.coreRadius * 0.58 + pulse * 0.4), 0, Math.PI * 1.35);
+        ctx.stroke();
+        ctx.restore();
+
+        // 反転予告時のパルス波
+        if (state.isWarningReverse) {
+          const waveT = (state.elapsed * 2.2) % 1;
+          const waveR = state.coreRadius + waveT * state.outerRadius * 0.55;
+          ctx.beginPath();
+          ctx.arc(state.cx, state.cy, waveR, 0, TWO_PI);
+          ctx.strokeStyle = `rgba(251, 113, 133, ${(1 - waveT) * 0.45})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      }
+
+      function drawOrbs() {
+        for (const orb of state.orbs) {
+          const orbPhi = (Math.log(orb.r) / SPIRAL_B) - state.phase - orb.psi;
+          const ox = state.cx + orb.r * Math.cos(orbPhi);
+          const oy = state.cy + orb.r * Math.sin(orbPhi);
+
+          // 出現・消滅フェード
+          let alpha = 1.0;
+          if (orb.life < 0.35) alpha = orb.life / 0.35;
+          else if (orb.life > orb.maxLife - 0.6) alpha = Math.max(0, (orb.maxLife - orb.life) / 0.6);
+
+          const pulse = 1 + Math.sin(orb.pulsePhase) * 0.16;
+          const r = orb.radius * pulse;
+
+          // 発光ハロー
+          const glow = ctx.createRadialGradient(ox, oy, r * 0.2, ox, oy, r * 2.8);
+          glow.addColorStop(0, `rgba(253, 224, 71, ${0.75 * alpha})`);
+          glow.addColorStop(0.5, `rgba(245, 158, 11, ${0.25 * alpha})`);
+          glow.addColorStop(1, 'rgba(245, 158, 11, 0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(ox, oy, r * 2.8, 0, TWO_PI);
+          ctx.fill();
+
+          // ダイヤ型コア
+          ctx.save();
+          ctx.translate(ox, oy);
+          ctx.rotate(orb.pulsePhase * 0.5);
+          ctx.fillStyle = `rgba(255, 251, 235, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(0, -r);
+          ctx.lineTo(r * 0.8, 0);
+          ctx.lineTo(0, r);
+          ctx.lineTo(-r * 0.8, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawPlayer() {
+        const p = state.player;
+        const trail = p.trail;
+
+        // 高倍率時は自機の色がゴールド寄りに輝く
+        const multT = Math.max(0, Math.min(1, (state.multiplier - 1.5) / 3.0));
+        const mainColor = lerpColor([224, 242, 254], [254, 240, 138], multT);
+        const glowColor = lerpColor([56, 189, 248], [251, 191, 36], multT);
+
+        // トレイル描画
+        if (trail.length > 1) {
+          for (let i = 1; i < trail.length; i++) {
+            const frac = i / trail.length;
+            ctx.beginPath();
+            ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+            ctx.lineTo(trail[i].x, trail[i].y);
+            ctx.strokeStyle = lerpColorRGBA([56, 189, 248], [251, 191, 36], multT, frac * 0.55);
+            ctx.lineWidth = state.playerRadius * 1.45 * frac;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+          }
+        }
+
+        // ニアミス時の危険リング
+        if (state.nearMissIntensity > 0.05) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, state.playerRadius + 7 + state.nearMissIntensity * 4, 0, TWO_PI);
+          ctx.strokeStyle = `rgba(251, 113, 133, ${state.nearMissIntensity * 0.65})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        // 自機の外側視認リング（タッチ操作でも見失わないように）
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, state.playerRadius + 5, 0, TWO_PI);
+        ctx.strokeStyle = lerpColorRGBA([56, 189, 248], [251, 191, 36], multT, 0.35);
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // 自機本体（当たり判定半径と完全一致）
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, state.playerRadius, 0, TWO_PI);
+        ctx.fillStyle = mainColor;
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 16;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      /**
+       * タイトル／ゲームオーバー画面でのカスタムカーソル（安全な位置か色分け表示）
+       */
+      function drawPointerPreview() {
+        if (!state.pointer.hasMoved) return;
+        const px = state.pointer.x;
+        const py = state.pointer.y;
+        const ev = evaluatePosition(px, py);
+        const isSafe = !ev.isColliding && ev.r <= state.outerRadius;
+
+        ctx.beginPath();
+        ctx.arc(px, py, state.playerRadius + 4, 0, TWO_PI);
+        ctx.strokeStyle = isSafe ? 'rgba(56, 189, 248, 0.7)' : 'rgba(244, 63, 94, 0.75)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(px, py, state.playerRadius * 0.7, 0, TWO_PI);
+        ctx.fillStyle = isSafe ? '#e0f2fe' : '#fda4af';
+        ctx.fill();
+      }
+
+      function drawParticlesAndTexts() {
+        for (const p of state.particles) {
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * p.life, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        ctx.font = '700 14px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        for (const ft of state.floatingTexts) {
+          ctx.globalAlpha = Math.max(0, ft.life);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // ==========================================
+      // 入力イベント処理（マウス・タッチ・キーボード）
+      // ==========================================
+      function updatePointerCoords(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        state.pointer.x = clientX - rect.left;
+        state.pointer.y = clientY - rect.top;
+        state.pointer.hasMoved = true;
+        state.inputMode = 'POINTER';
+      }
+
+      canvas.addEventListener('pointermove', (e) => {
+        updatePointerCoords(e.clientX, e.clientY);
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        updatePointerCoords(e.clientX, e.clientY);
+        state.pointer.active = true;
+
+        // タイトル中またはリトライ待機中に、安全な通路内をクリックしたらその場から即スタート
+        if (state.mode === 'TITLE' || (state.mode === 'GAMEOVER' && state.gameOverCooldown <= 0)) {
+          const ev = evaluatePosition(state.pointer.x, state.pointer.y);
+          if (!ev.isColliding && ev.r <= state.outerRadius) {
+            startGame(state.pointer.x, state.pointer.y);
+          }
+        }
+      });
+
+      window.addEventListener('pointerup', () => {
+        state.pointer.active = false;
+      });
+
+      // タッチスクロール完全防止
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+          updatePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length > 0) {
+          updatePointerCoords(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      // キーボード操作
+      window.addEventListener('keydown', (e) => {
+        const code = e.code;
+
+        if (code === 'ArrowUp' || code === 'KeyW') { state.keys.up = true; state.inputMode = 'KEYBOARD'; }
+        if (code === 'ArrowDown' || code === 'KeyS') { state.keys.down = true; state.inputMode = 'KEYBOARD'; }
+        if (code === 'ArrowLeft' || code === 'KeyA') { state.keys.left = true; state.inputMode = 'KEYBOARD'; }
+        if (code === 'ArrowRight' || code === 'KeyD') { state.keys.right = true; state.inputMode = 'KEYBOARD'; }
+
+        if (code === 'Space' || code === 'Enter') {
+          e.preventDefault();
+          if (state.mode === 'TITLE') {
+            startGame();
+          } else if (state.mode === 'GAMEOVER' && state.gameOverCooldown <= 0) {
+            startGame();
+          }
+        }
+
+        if (code === 'KeyR' && state.mode === 'GAMEOVER' && state.gameOverCooldown <= 0) {
+          e.preventDefault();
+          startGame();
+        }
+
+        if (code === 'KeyM') {
+          sound.toggleMute();
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        const code = e.code;
+        if (code === 'ArrowUp' || code === 'KeyW') state.keys.up = false;
+        if (code === 'ArrowDown' || code === 'KeyS') state.keys.down = false;
+        if (code === 'ArrowLeft' || code === 'KeyA') state.keys.left = false;
+        if (code === 'ArrowRight' || code === 'KeyD') state.keys.right = false;
+      });
+
+      // ボタンイベント
+      startBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startGame();
+      });
+
+      retryBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startGame();
+      });
+
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.toggleMute();
+      });
+
+      // ==========================================
+      // メインループ
+      // ==========================================
+      let lastTimestamp = 0;
+
+      function gameLoop(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        // タブ切り替え時の極端なdt跳ね上がりを防止
+        const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+        lastTimestamp = timestamp;
+
+        update(dt);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // 初期化と起動
+      window.addEventListener('resize', handleResize);
+      window.onload = function () {
+        handleResize();
+        requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>

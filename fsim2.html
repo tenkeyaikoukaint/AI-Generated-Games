@@ -1,0 +1,1990 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>シンプル・フライトシミュレータ（完全オフライン版）</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #4aa3df;
+            font-family: sans-serif;
+            color: #ffffff;
+        }
+
+        #sim-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* HUD コンテナ */
+        #hud-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .panel {
+            background-color: rgba(15, 25, 40, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 10px;
+            pointer-events: auto;
+        }
+
+        /* 左上：計器パネル */
+        #telemetry-panel {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            padding: 10px 14px;
+            min-width: 170px;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        .tel-row {
+            display: block;
+            clear: both;
+        }
+
+        .tel-label {
+            color: #cbd5e1;
+            float: left;
+            margin-right: 10px;
+        }
+
+        .tel-val {
+            color: #7dd3fc;
+            font-weight: bold;
+            float: right;
+        }
+
+        .tel-val-alt {
+            color: #6ee7b7;
+            font-weight: bold;
+            float: right;
+        }
+
+        .tel-val-ring {
+            color: #fde047;
+            font-weight: bold;
+            float: right;
+        }
+
+        .tel-divider {
+            clear: both;
+            height: 1px;
+            background-color: rgba(255, 255, 255, 0.18);
+            margin: 5px 0;
+        }
+
+        /* 上部中央：操作ボタンバー */
+        #top-buttons {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            margin-left: -215px;
+            width: 430px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .hud-btn {
+            display: inline-block;
+            pointer-events: auto;
+            background-color: rgba(15, 25, 40, 0.78);
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 8px;
+            padding: 6px 10px;
+            margin: 2px;
+            font-size: 12px;
+            font-weight: bold;
+            font-family: sans-serif;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .hud-btn:hover {
+            background-color: rgba(30, 50, 80, 0.92);
+        }
+
+        .hud-btn:active {
+            background-color: rgba(14, 165, 233, 0.9);
+        }
+
+        .hud-btn-on {
+            background-color: rgba(2, 132, 199, 0.88);
+            border-color: #bae6fd;
+        }
+
+        /* 右上：ミニレーダー */
+        #radar-wrap {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 6px;
+            text-align: center;
+        }
+
+        #radar-canvas {
+            display: block;
+            width: 112px;
+            height: 112px;
+            border-radius: 50%;
+            background-color: rgba(8, 20, 34, 0.85);
+            border: 1px solid rgba(125, 211, 252, 0.5);
+        }
+
+        #radar-label {
+            font-size: 10px;
+            color: #cbd5e1;
+            margin-top: 3px;
+        }
+
+        /* 中央通知バナー */
+        #status-banner {
+            position: absolute;
+            top: 66px;
+            left: 50%;
+            width: 360px;
+            margin-left: -180px;
+            padding: 10px 14px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            display: none;
+            background-color: rgba(15, 25, 40, 0.88);
+            border: 2px solid #38bdf8;
+        }
+
+        #banner-reset-btn {
+            display: none;
+            margin-top: 8px;
+            background-color: #0284c7;
+            color: #ffffff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* 右側：スロットルバー */
+        #throttle-panel {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            margin-top: -105px;
+            padding: 8px 6px;
+            width: 54px;
+            text-align: center;
+        }
+
+        .thr-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .thr-step-btn {
+            display: block;
+            width: 38px;
+            height: 24px;
+            margin: 3px auto;
+            background-color: rgba(30, 41, 59, 0.9);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            line-height: 20px;
+            cursor: pointer;
+        }
+
+        .thr-step-btn:active {
+            background-color: #0284c7;
+        }
+
+        #throttle-track {
+            position: relative;
+            width: 24px;
+            height: 110px;
+            margin: 6px auto;
+            background-color: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        #throttle-fill {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            height: 65%;
+            background-color: #38bdf8;
+        }
+
+        #throttle-val {
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            color: #fde047;
+            margin-top: 4px;
+        }
+
+        /* 左下：操作説明 */
+        #help-panel {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            padding: 9px 12px;
+            font-size: 11px;
+            line-height: 1.55;
+            max-width: 300px;
+            color: #f1f5f9;
+        }
+
+        .help-title {
+            font-weight: bold;
+            color: #7dd3fc;
+            margin-bottom: 3px;
+            font-size: 12px;
+        }
+
+        .kbd {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            padding: 0 4px;
+            font-family: monospace;
+            font-size: 10px;
+            margin-right: 2px;
+        }
+
+        /* 右下：マウス・タッチ用操縦パッド */
+        #flight-pad {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            width: 146px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .pad-row {
+            margin-top: 4px;
+        }
+
+        .pad-btn {
+            display: inline-block;
+            pointer-events: auto;
+            width: 44px;
+            height: 40px;
+            line-height: 38px;
+            margin: 0 2px;
+            background-color: rgba(15, 25, 40, 0.72);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .pad-btn:active, .pad-btn-active {
+            background-color: rgba(2, 132, 199, 0.92);
+        }
+
+        /* 画面が狭い場合の調整 */
+        @media screen and (max-width: 720px) {
+            #top-buttons {
+                left: 12px;
+                margin-left: 0;
+                width: auto;
+                top: 132px;
+                text-align: left;
+                max-width: 210px;
+            }
+            #status-banner {
+                width: 280px;
+                margin-left: -140px;
+                font-size: 12px;
+            }
+            #help-panel {
+                max-width: 190px;
+                font-size: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- メイン3D描画キャンバス（HTML5 2D APIのみ使用） -->
+    <canvas id="sim-canvas"></canvas>
+
+    <!-- HUDオーバーレイ -->
+    <div id="hud-layer">
+        <!-- 左上：計器表示 -->
+        <div id="telemetry-panel" class="panel">
+            <div class="tel-row">
+                <span class="tel-label">速度</span>
+                <span class="tel-val" id="val-speed">105 kt</span>
+            </div>
+            <div class="tel-row">
+                <span class="tel-label">高度</span>
+                <span class="tel-val-alt" id="val-alt">45 m</span>
+            </div>
+            <div class="tel-row">
+                <span class="tel-label">方位</span>
+                <span class="tel-val" id="val-hdg">000° N</span>
+            </div>
+            <div class="tel-divider"></div>
+            <div class="tel-row">
+                <span class="tel-label">リング</span>
+                <span class="tel-val-ring" id="val-rings">0 / 10</span>
+            </div>
+            <div style="clear: both;"></div>
+        </div>
+
+        <!-- 上部：クイック切替ボタン -->
+        <div id="top-buttons">
+            <button type="button" id="btn-cam" class="hud-btn">視点: 後方 (C)</button>
+            <button type="button" id="btn-inv" class="hud-btn">上下反転: OFF</button>
+            <button type="button" id="btn-snd" class="hud-btn">音声: OFF</button>
+            <button type="button" id="btn-help" class="hud-btn">説明</button>
+            <button type="button" id="btn-rst" class="hud-btn">リセット (R)</button>
+        </div>
+
+        <!-- 右上：ミニレーダー -->
+        <div id="radar-wrap" class="panel">
+            <canvas id="radar-canvas" width="112" height="112"></canvas>
+            <div id="radar-label">レーダー（金=リング）</div>
+        </div>
+
+        <!-- 中央：通知メッセージ -->
+        <div id="status-banner" class="panel">
+            <div id="banner-text">フライト開始！</div>
+            <button type="button" id="banner-reset-btn">リスタート (R)</button>
+        </div>
+
+        <!-- 右側：スロットル調整 -->
+        <div id="throttle-panel" class="panel">
+            <div class="thr-title">出力</div>
+            <button type="button" id="btn-thr-up" class="thr-step-btn">+</button>
+            <div id="throttle-track" title="クリック/ドラッグで出力調整">
+                <div id="throttle-fill"></div>
+            </div>
+            <button type="button" id="btn-thr-dn" class="thr-step-btn">-</button>
+            <div id="throttle-val">65%</div>
+        </div>
+
+        <!-- 左下：操作ガイド -->
+        <div id="help-panel" class="panel">
+            <div class="help-title">操作方法（完全オフライン版）</div>
+            <div><span class="kbd">↑↓</span><span class="kbd">W/S</span> 上昇・下降</div>
+            <div><span class="kbd">←→</span><span class="kbd">A/D</span> 左右旋回（自動水平補助）</div>
+            <div><span class="kbd">Shift/E</span> 加速　<span class="kbd">Ctrl/Q</span> 減速</div>
+            <div><span class="kbd">C</span> 視点切替　<span class="kbd">R</span> リセット</div>
+        </div>
+
+        <!-- 右下：マウス/タッチ操縦パッド -->
+        <div id="flight-pad">
+            <div class="pad-row">
+                <button type="button" class="pad-btn" id="pad-up">▲</button>
+            </div>
+            <div class="pad-row">
+                <button type="button" class="pad-btn" id="pad-left">◀</button>
+                <button type="button" class="pad-btn" id="pad-down">▼</button>
+                <button type="button" class="pad-btn" id="pad-right">▶</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /* =====================================================================
+     * シンプル・フライトシミュレータ（完全オフライン / Canvas 2D / ES5互換版）
+     * 外部ライブラリ・WebGLを一切使用せず、Lubuntu 18等の古いブラウザで動作します。
+     * ===================================================================== */
+    (function () {
+        'use strict';
+
+        // -----------------------------------------------------------------
+        // 1. 互換性ヘルパー（ES5厳守）
+        // -----------------------------------------------------------------
+        var reqAnimFrame = window.requestAnimationFrame ||
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame ||
+            window.oRequestAnimationFrame ||
+            window.msRequestAnimationFrame ||
+            function (cb) {
+                return window.setTimeout(function () {
+                    cb(+new Date());
+                }, 16);
+            };
+
+        function clamp(val, minV, maxV) {
+            if (val < minV) return minV;
+            if (val > maxV) return maxV;
+            return val;
+        }
+
+        function pad3(num) {
+            var s = String(Math.floor(num));
+            while (s.length < 3) {
+                s = '0' + s;
+            }
+            return s;
+        }
+
+        // -----------------------------------------------------------------
+        // 2. キャンバス・描画設定
+        // -----------------------------------------------------------------
+        var canvas = null;
+        var ctx = null;
+        var radarCanvas = null;
+        var rctx = null;
+        var viewW = 800;
+        var viewH = 600;
+        var focalLength = 520;
+        var NEAR_Z = 2.0;
+        var FAR_Z = 2400.0;
+
+        // -----------------------------------------------------------------
+        // 3. フライト状態・設定・入力
+        // -----------------------------------------------------------------
+        var state = {
+            x: 0,
+            y: 44,
+            z: 240,
+            yaw: 0,          // 0 = 北 (-Z方向)
+            pitch: 0,        // 正 = 上昇
+            roll: 0,         // 正 = 左バンク
+            throttle: 0.65,  // 0.0 ~ 1.0
+            speed: 58,       // ワールド単位/秒
+            propAngle: 0,
+            isLanded: false,
+            isCrashed: false,
+            ringsCollected: 0,
+            totalRings: 10,
+            flashAlpha: 0
+        };
+
+        var settings = {
+            cameraMode: 'chase', // 'chase' (後方視点) | 'cockpit' (コックピット視点)
+            invertPitch: false,  // false: ↑/W で上昇
+            soundEnabled: false, // 初期ミュート（ボタンでON）
+            showHelp: true
+        };
+
+        var input = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            thrUp: false,
+            thrDown: false
+        };
+
+        // カメラ位置と姿勢（毎フレーム更新）
+        var cam = {
+            x: 0, y: 50, z: 260,
+            yaw: 0, pitch: 0, roll: 0,
+            sinYaw: 0, cosYaw: 1,
+            sinPitch: 0, cosPitch: 1,
+            sinRoll: 0, cosRoll: 1
+        };
+
+        // ワールドオブジェクト配列
+        var staticPolys = [];   // 島・滑走路・山・建物・木の3Dポリゴン
+        var islandsInfo = [];   // 衝突判定・レーダー用の島情報
+        var clouds = [];        // 3D雲データ
+        var rings = [];         // 10個のゴールデンリング
+
+        // 通知バナータイマー
+        var bannerTimer = null;
+        var lastTimestamp = 0;
+
+        // -----------------------------------------------------------------
+        // 4. Web Audio API（完全にtry-catch保護・古いブラウザでもエラーなし）
+        // -----------------------------------------------------------------
+        var audioCtx = null;
+
+        function ensureAudio() {
+            if (audioCtx) return true;
+            try {
+                var AC = window.AudioContext || window.webkitAudioContext;
+                if (!AC) return false;
+                audioCtx = new AC();
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function playBeep(freq, duration, vol) {
+            if (!settings.soundEnabled) return;
+            if (!ensureAudio()) return;
+            try {
+                if (audioCtx.state === 'suspended' && audioCtx.resume) {
+                    audioCtx.resume();
+                }
+                var now = audioCtx.currentTime;
+                var osc = audioCtx.createOscillator();
+                var gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                gain.gain.setValueAtTime(vol || 0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + duration + 0.02);
+            } catch (e) {
+                // 音声非対応ブラウザでは黙ってスキップ
+            }
+        }
+
+        function playRingSound(isAllClear) {
+            if (!settings.soundEnabled) return;
+            playBeep(660, 0.16, 0.14);
+            window.setTimeout(function () {
+                playBeep(880, 0.24, 0.14);
+            }, 90);
+            if (isAllClear) {
+                window.setTimeout(function () {
+                    playBeep(1174, 0.35, 0.16);
+                }, 190);
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 5. 3Dワールド構築（軽量ローポリゴン）
+        // -----------------------------------------------------------------
+        function addPoly(pts, fill, stroke, bias) {
+            // 重心を事前計算（距離ソート用）
+            var sx = 0, sy = 0, sz = 0;
+            var i;
+            for (i = 0; i < pts.length; i++) {
+                sx += pts[i].x;
+                sy += pts[i].y;
+                sz += pts[i].z;
+            }
+            staticPolys.push({
+                pts: pts,
+                fill: fill,
+                stroke: stroke || null,
+                cx: sx / pts.length,
+                cy: sy / pts.length,
+                cz: sz / pts.length,
+                bias: bias || 0
+            });
+        }
+
+        function addBox(cx, by, cz, w, h, d, colTop, colSide1, colSide2) {
+            var hw = w * 0.5;
+            var hd = d * 0.5;
+            var ty = by + h;
+            // 上面
+            addPoly([
+                { x: cx - hw, y: ty, z: cz - hd },
+                { x: cx + hw, y: ty, z: cz - hd },
+                { x: cx + hw, y: ty, z: cz + hd },
+                { x: cx - hw, y: ty, z: cz + hd }
+            ], colTop, '#1e293b');
+            // 前面 (+Z)
+            addPoly([
+                { x: cx - hw, y: by, z: cz + hd },
+                { x: cx + hw, y: by, z: cz + hd },
+                { x: cx + hw, y: ty, z: cz + hd },
+                { x: cx - hw, y: ty, z: cz + hd }
+            ], colSide1, '#1e293b');
+            // 背面 (-Z)
+            addPoly([
+                { x: cx + hw, y: by, z: cz - hd },
+                { x: cx - hw, y: by, z: cz - hd },
+                { x: cx - hw, y: ty, z: cz - hd },
+                { x: cx + hw, y: ty, z: cz - hd }
+            ], colSide1, '#1e293b');
+            // 右面 (+X)
+            addPoly([
+                { x: cx + hw, y: by, z: cz + hd },
+                { x: cx + hw, y: by, z: cz - hd },
+                { x: cx + hw, y: ty, z: cz - hd },
+                { x: cx + hw, y: ty, z: cz + hd }
+            ], colSide2, '#1e293b');
+            // 左面 (-X)
+            addPoly([
+                { x: cx - hw, y: by, z: cz - hd },
+                { x: cx - hw, y: by, z: cz + hd },
+                { x: cx - hw, y: ty, z: cz + hd },
+                { x: cx - hw, y: ty, z: cz - hd }
+            ], colSide2, '#1e293b');
+        }
+
+        function addPyramid(cx, by, cz, r, h, sides, colA, colB) {
+            var i;
+            var top = { x: cx, y: by + h, z: cz };
+            for (i = 0; i < sides; i++) {
+                var a1 = (i / sides) * Math.PI * 2;
+                var a2 = ((i + 1) / sides) * Math.PI * 2;
+                var p1 = { x: cx + Math.cos(a1) * r, y: by, z: cz + Math.sin(a1) * r };
+                var p2 = { x: cx + Math.cos(a2) * r, y: by, z: cz + Math.sin(a2) * r };
+                addPoly([p1, p2, top], (i % 2 === 0) ? colA : colB, null);
+            }
+        }
+
+        function addPolygonDisk(cx, y, cz, rx, rz, sides, fill, bias) {
+            var pts = [];
+            var i;
+            for (i = 0; i < sides; i++) {
+                var a = (i / sides) * Math.PI * 2;
+                pts.push({
+                    x: cx + Math.cos(a) * rx,
+                    y: y,
+                    z: cz + Math.sin(a) * rz
+                });
+            }
+            addPoly(pts, fill, null, bias);
+        }
+
+        function buildWorld() {
+            staticPolys = [];
+            islandsInfo = [];
+            clouds = [];
+            rings = [];
+
+            // --- 1) メイン島＆滑走路 ---
+            // 砂浜ベース（biasで地面の描画順を後ろに寄せる）
+            addPolygonDisk(0, 0.2, -30, 145, 225, 10, '#f3d98b', 60);
+            // 緑の大地
+            addPolygonDisk(0, 0.5, -30, 128, 205, 10, '#4ade80', 50);
+
+            // 滑走路（アスファルト）: 幅28, 長さ290 (Z: -175 ~ +115)
+            addPoly([
+                { x: -14, y: 0.8, z: -175 },
+                { x:  14, y: 0.8, z: -175 },
+                { x:  14, y: 0.8, z:  115 },
+                { x: -14, y: 0.8, z:  115 }
+            ], '#334155', '#1e293b', 35);
+
+            // 滑走路の中央破線
+            var zPos;
+            for (zPos = -155; zPos <= 95; zPos += 24) {
+                addPoly([
+                    { x: -0.9, y: 0.9, z: zPos - 6 },
+                    { x:  0.9, y: 0.9, z: zPos - 6 },
+                    { x:  0.9, y: 0.9, z: zPos + 6 },
+                    { x: -0.9, y: 0.9, z: zPos + 6 }
+                ], '#f8fafc', null, 25);
+            }
+
+            // 滑走路両端の白いマーキング
+            var endZs = [-168, 106];
+            var ei, xi;
+            for (ei = 0; ei < endZs.length; ei++) {
+                for (xi = -9; xi <= 9; xi += 6) {
+                    addPoly([
+                        { x: xi - 1.5, y: 0.9, z: endZs[ei] - 4 },
+                        { x: xi + 1.5, y: 0.9, z: endZs[ei] - 4 },
+                        { x: xi + 1.5, y: 0.9, z: endZs[ei] + 4 },
+                        { x: xi - 1.5, y: 0.9, z: endZs[ei] + 4 }
+                    ], '#ffffff', null, 25);
+                }
+            }
+
+            // 管制塔＆格納庫（滑走路の右側）
+            addBox(36, 0.6, -35, 11, 20, 11, '#e2e8f0', '#cbd5e1', '#94a3b8');
+            addBox(36, 20.6, -35, 14, 6, 14, '#ef4444', '#0284c7', '#0369a1');
+            addBox(42, 0.6, 15, 22, 11, 26, '#94a3b8', '#64748b', '#475569');
+
+            // メイン島の小さな丘と木
+            addPyramid(-68, 0.6, -90, 34, 24, 5, '#22c55e', '#16a34a');
+            addPyramid(-66, 0.6, 45, 28, 18, 5, '#22c55e', '#16a34a');
+            addPyramid(72, 0.6, -95, 30, 22, 5, '#22c55e', '#16a34a');
+
+            var mainTrees = [
+                [-40, -120], [-48, -50], [-42, 10], [-45, 90],
+                [58, -120], [62, -55], [58, 65], [-34, 120]
+            ];
+            var ti;
+            for (ti = 0; ti < mainTrees.length; ti++) {
+                addPyramid(mainTrees[ti][0], 0.6, mainTrees[ti][1], 5.5, 13, 4, '#15803d', '#166534');
+            }
+
+            islandsInfo.push({
+                type: 'main',
+                x: 0, z: -30,
+                rx: 135, rz: 215,
+                r: 165, h: 1.0
+            });
+
+            // --- 2) 周囲の島々（6つ） ---
+            var specs = [
+                { x: -340, z: -380, r: 95,  h: 52 },
+                { x:  330, z: -410, r: 110, h: 66 },
+                { x:    0, z: -740, r: 120, h: 78 },
+                { x:  470, z:  -80, r: 85,  h: 40 },
+                { x: -450, z:   70, r: 95,  h: 48 },
+                { x:  340, z:  380, r: 90,  h: 44 }
+            ];
+
+            var si;
+            for (si = 0; si < specs.length; si++) {
+                var sp = specs[si];
+                addPolygonDisk(sp.x, 0.2, sp.z, sp.r, sp.r, 8, '#f3d98b', 55);
+                addPolygonDisk(sp.x, 0.6, sp.z, sp.r * 0.84, sp.r * 0.84, 8, '#4ade80', 45);
+                addPyramid(sp.x, 0.7, sp.z, sp.r * 0.64, sp.h, 6, '#22c55e', '#15803d');
+                // 高い山には山頂の岩肌アクセント
+                if (sp.h >= 60) {
+                    addPyramid(sp.x, sp.h * 0.62, sp.z, sp.r * 0.24, sp.h * 0.40, 6, '#cbd5e1', '#94a3b8');
+                }
+                // 木を3本配置
+                addPyramid(sp.x + sp.r * 0.55, 0.7, sp.z + 12, 6, 14, 4, '#15803d', '#166534');
+                addPyramid(sp.x - sp.r * 0.52, 0.7, sp.z - 18, 5.5, 13, 4, '#15803d', '#166534');
+
+                islandsInfo.push({
+                    type: 'hill',
+                    x: sp.x, z: sp.z,
+                    r: sp.r, h: sp.h
+                });
+            }
+
+            // --- 3) 3D雲（18個） ---
+            var cloudSeeds = [
+                [-400, 140, -200], [320, 155, -260], [0, 175, -520],
+                [-260, 160, -680], [280, 180, -660], [-520, 145, 160],
+                [510, 150, 120], [180, 135, 320], [-220, 145, 360],
+                [0, 190, 520], [640, 165, -360], [-640, 170, -340],
+                [120, 150, -920], [-220, 165, -940], [440, 155, 480],
+                [-440, 160, 480], [60, 130, -140], [-140, 140, 80]
+            ];
+            var ci;
+            for (ci = 0; ci < cloudSeeds.length; ci++) {
+                clouds.push({
+                    x: cloudSeeds[ci][0],
+                    y: cloudSeeds[ci][1],
+                    z: cloudSeeds[ci][2],
+                    r: 22 + (ci % 4) * 5,
+                    drift: 1.2 + (ci % 3) * 0.7
+                });
+            }
+
+            // --- 4) 10個のゴールデンリング ---
+            var ringCoords = [
+                [0,    44,   80],
+                [0,    50,  -95],
+                [65,   64, -250],
+                [200,  78, -380],
+                [240,  92, -540],
+                [60,  102, -660],
+                [-160, 88, -580],
+                [-290, 72, -320],
+                [-270, 58,  -30],
+                [-120, 48,  170]
+            ];
+
+            var ri;
+            for (ri = 0; ri < ringCoords.length; ri++) {
+                var rc = ringCoords[ri];
+                var nextRc = ringCoords[(ri + 1) % ringCoords.length];
+                var dx = nextRc[0] - rc[0];
+                var dz = nextRc[2] - rc[2];
+                // リングがコース方向を向く角度
+                var angleY = Math.atan2(dx, dz);
+                rings.push({
+                    x: rc[0],
+                    y: rc[1],
+                    baseY: rc[1],
+                    z: rc[2],
+                    radius: 15,
+                    angleY: angleY,
+                    collected: false,
+                    phase: ri * 0.7
+                });
+            }
+            state.totalRings = rings.length;
+        }
+
+        // -----------------------------------------------------------------
+        // 6. 3Dカメラ変換・近平面クリッピング
+        // -----------------------------------------------------------------
+        function updateCameraTransform() {
+            if (settings.cameraMode === 'cockpit') {
+                cam.x = state.x;
+                cam.y = state.y + 1.2;
+                cam.z = state.z;
+                cam.yaw = state.yaw;
+                cam.pitch = state.pitch;
+                cam.roll = state.roll;
+            } else {
+                // 後方チェイス視点（機体の後ろ上方に配置）
+                var dist = 24;
+                var backX = Math.sin(state.yaw) * Math.cos(state.pitch) * dist;
+                var backY = -Math.sin(state.pitch) * dist + 5.5;
+                var backZ = Math.cos(state.yaw) * Math.cos(state.pitch) * dist;
+
+                cam.x = state.x + backX;
+                cam.y = Math.max(2.2, state.y + backY);
+                cam.z = state.z + backZ;
+                cam.yaw = state.yaw;
+                cam.pitch = state.pitch * 0.82 - 0.06;
+                cam.roll = state.roll * 0.55;
+            }
+
+            cam.sinYaw = Math.sin(cam.yaw);
+            cam.cosYaw = Math.cos(cam.yaw);
+            cam.sinPitch = Math.sin(cam.pitch);
+            cam.cosPitch = Math.cos(cam.pitch);
+            cam.sinRoll = Math.sin(cam.roll);
+            cam.cosRoll = Math.cos(cam.roll);
+        }
+
+        // ワールド座標 -> カメラ空間座標 (cx:右, cy:上, cz:前方)
+        function worldToCam(wx, wy, wz) {
+            var dx = wx - cam.x;
+            var dy = wy - cam.y;
+            var dz = wz - cam.z;
+
+            // 1) Yawの打ち消し
+            var x1 = dx * cam.cosYaw - dz * cam.sinYaw;
+            var z1 = -dx * cam.sinYaw - dz * cam.cosYaw;
+
+            // 2) Pitchの打ち消し
+            var y2 = dy * cam.cosPitch - z1 * cam.sinPitch;
+            var z2 = dy * cam.sinPitch + z1 * cam.cosPitch;
+
+            // 3) Rollの打ち消し（左バンクで地平線が時計回りに傾く）
+            var cx = x1 * cam.cosRoll + y2 * cam.sinRoll;
+            var cy = -x1 * cam.sinRoll + y2 * cam.cosRoll;
+
+            return { x: cx, y: cy, z: z2 };
+        }
+
+        // Sutherland-Hodgman 近平面クリッピング (z >= NEAR_Z)
+        function clipPolygonNear(camPts) {
+            var out = [];
+            var len = camPts.length;
+            if (len < 3) return out;
+
+            var i, a, b, aIn, bIn, t;
+            for (i = 0; i < len; i++) {
+                a = camPts[i];
+                b = camPts[(i + 1) % len];
+                aIn = (a.z >= NEAR_Z);
+                bIn = (b.z >= NEAR_Z);
+
+                if (aIn && bIn) {
+                    out.push(b);
+                } else if (aIn && !bIn) {
+                    t = (NEAR_Z - a.z) / (b.z - a.z);
+                    out.push({
+                        x: a.x + t * (b.x - a.x),
+                        y: a.y + t * (b.y - a.y),
+                        z: NEAR_Z
+                    });
+                } else if (!aIn && bIn) {
+                    t = (NEAR_Z - a.z) / (b.z - a.z);
+                    out.push({
+                        x: a.x + t * (b.x - a.x),
+                        y: a.y + t * (b.y - a.y),
+                        z: NEAR_Z
+                    });
+                    out.push(b);
+                }
+            }
+            return out;
+        }
+
+        function projectPoint(cp) {
+            var scale = focalLength / cp.z;
+            return {
+                sx: viewW * 0.5 + cp.x * scale,
+                sy: viewH * 0.5 - cp.y * scale,
+                scale: scale
+            };
+        }
+
+        // -----------------------------------------------------------------
+        // 7. 地形高度チェック・リセット・通知バナー
+        // -----------------------------------------------------------------
+        function getTerrainInfo(x, z) {
+            // 滑走路エリア判定
+            if (Math.abs(x) <= 15 && z >= -176 && z <= 116) {
+                return { height: 0.85, onRunway: true };
+            }
+
+            // メイン島（滑走路外）
+            var main = islandsInfo[0];
+            if (main) {
+                var nx = (x - main.x) / main.rx;
+                var nz = (z - main.z) / main.rz;
+                if (nx * nx + nz * nz <= 1.0) {
+                    return { height: 0.6, onRunway: false };
+                }
+            }
+
+            // 周囲の島々（円錐形の簡易高さ）
+            var i, isl, dx, dz, dist, ratio;
+            for (i = 1; i < islandsInfo.length; i++) {
+                isl = islandsInfo[i];
+                dx = x - isl.x;
+                dz = z - isl.z;
+                dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < isl.r) {
+                    ratio = 1.0 - dist / (isl.r * 0.72);
+                    if (ratio < 0) ratio = 0;
+                    return { height: 0.8 + ratio * isl.h, onRunway: false };
+                }
+            }
+
+            // 海面
+            return { height: 0, onRunway: false };
+        }
+
+        function showBanner(text, showResetBtn, durationMs) {
+            var banner = document.getElementById('status-banner');
+            var textEl = document.getElementById('banner-text');
+            var btnEl = document.getElementById('banner-reset-btn');
+
+            textEl.innerHTML = text;
+            btnEl.style.display = showResetBtn ? 'inline-block' : 'none';
+            banner.style.display = 'block';
+
+            if (bannerTimer) {
+                window.clearTimeout(bannerTimer);
+                bannerTimer = null;
+            }
+            if (durationMs && durationMs > 0) {
+                bannerTimer = window.setTimeout(function () {
+                    banner.style.display = 'none';
+                }, durationMs);
+            }
+        }
+
+        function resetFlight(resetRings) {
+            state.x = 0;
+            state.y = 44;
+            state.z = 230;
+            state.yaw = 0;
+            state.pitch = 0;
+            state.roll = 0;
+            state.throttle = 0.65;
+            state.speed = 58;
+            state.isLanded = false;
+            state.isCrashed = false;
+            state.flashAlpha = 0;
+
+            if (resetRings) {
+                state.ringsCollected = 0;
+                var i;
+                for (i = 0; i < rings.length; i++) {
+                    rings[i].collected = false;
+                }
+            }
+
+            updateThrottleUI();
+            showBanner('フライト開始！金色のリングをくぐってみよう', false, 2800);
+        }
+
+        // -----------------------------------------------------------------
+        // 8. フライト物理更新（かんたん・自動水平アシスト付き）
+        // -----------------------------------------------------------------
+        function updateFlight(dt, elapsedSec) {
+            // スロットル調整
+            if (input.thrUp) {
+                state.throttle = clamp(state.throttle + dt * 0.5, 0.0, 1.0);
+                updateThrottleUI();
+            }
+            if (input.thrDown) {
+                state.throttle = clamp(state.throttle - dt * 0.5, 0.0, 1.0);
+                updateThrottleUI();
+            }
+
+            if (state.flashAlpha > 0) {
+                state.flashAlpha = Math.max(0, state.flashAlpha - dt * 2.2);
+            }
+
+            if (state.isCrashed) {
+                state.propAngle += dt * 1.5;
+                return;
+            }
+
+            // ピッチ入力（デフォルト: ↑/W で上昇）
+            var pitchIn = 0;
+            if (input.up) pitchIn += 1;
+            if (input.down) pitchIn -= 1;
+            if (settings.invertPitch) pitchIn = -pitchIn;
+
+            // 左右旋回入力
+            var turnIn = 0;
+            if (input.left) turnIn += 1;
+            if (input.right) turnIn -= 1;
+
+            if (state.isLanded) {
+                // 滑走路上での走行・離陸
+                var groundTarget = state.throttle * 82;
+                state.speed += (groundTarget - state.speed) * Math.min(1, dt * 1.8);
+                state.yaw += turnIn * dt * 0.8 * Math.min(1, state.speed / 16);
+                state.roll += (0 - state.roll) * Math.min(1, dt * 6);
+
+                if (state.speed > 34 && pitchIn > 0) {
+                    state.isLanded = false;
+                    state.pitch = 0.14;
+                    showBanner('離陸しました！', false, 1800);
+                } else {
+                    state.pitch += (0 - state.pitch) * Math.min(1, dt * 6);
+                }
+            } else {
+                // 空中フライト（自動水平アシストで誰でも簡単に飛ばせる）
+                var maxPitch = 0.68; // 約39度
+                if (pitchIn !== 0) {
+                    state.pitch += pitchIn * 1.15 * dt;
+                } else {
+                    state.pitch += (0 - state.pitch) * Math.min(1, dt * 1.5);
+                }
+                state.pitch = clamp(state.pitch, -maxPitch, maxPitch);
+
+                // 旋回と連動バンク角
+                state.yaw += turnIn * 1.22 * dt;
+                var targetRoll = turnIn * 0.58; // 約33度
+                state.roll += (targetRoll - state.roll) * Math.min(1, dt * 4.5);
+
+                // 速度計算（失速しないやさしい巡航速度）
+                var minCruise = (state.throttle > 0.05) ? 28 : 18;
+                var maxSpeed = 95;
+                var pitchEffect = -Math.sin(state.pitch) * 14;
+                var targetSpeed = clamp(minCruise + state.throttle * (maxSpeed - minCruise) + pitchEffect, 16, 110);
+                state.speed += (targetSpeed - state.speed) * Math.min(1, dt * 2.0);
+            }
+
+            // 前進ベクトルによる位置更新
+            var cosP = Math.cos(state.pitch);
+            var vx = -Math.sin(state.yaw) * cosP;
+            var vy = Math.sin(state.pitch);
+            var vz = -Math.cos(state.yaw) * cosP;
+
+            state.x += vx * state.speed * dt;
+            state.y += vy * state.speed * dt;
+            state.z += vz * state.speed * dt;
+
+            // 高度上限
+            if (state.y > 380) {
+                state.y = 380;
+                if (state.pitch > 0) state.pitch *= 0.9;
+            }
+
+            // ワールド端でのゆるやかな引き戻し（迷子防止）
+            var distOrigin = Math.sqrt(state.x * state.x + state.z * state.z);
+            if (distOrigin > 1450) {
+                state.x *= 0.996;
+                state.z *= 0.996;
+            }
+
+            // 地形・滑走路との接触判定
+            var terrain = getTerrainInfo(state.x, state.z);
+            var clearance = 1.6;
+            if (state.y <= terrain.height + clearance) {
+                if (terrain.onRunway) {
+                    state.y = terrain.height + clearance;
+                    if (!state.isLanded) {
+                        state.isLanded = true;
+                        state.pitch = 0;
+                        state.roll = 0;
+                        showBanner('着陸成功 / LANDED（出力を上げて ↑ で再離陸）', false, 3800);
+                        playBeep(523, 0.25, 0.12);
+                    }
+                } else if (terrain.height === 0) {
+                    state.y = 1.0;
+                    state.isCrashed = true;
+                    state.speed = 0;
+                    showBanner('着水しました - Rキーまたはリスタートで再開', true, 0);
+                    playBeep(190, 0.35, 0.14);
+                } else {
+                    state.y = terrain.height + clearance;
+                    state.isCrashed = true;
+                    state.speed = 0;
+                    showBanner('島に着地しました - Rキーまたはリスタートで再開', true, 0);
+                    playBeep(210, 0.3, 0.14);
+                }
+            } else {
+                state.isLanded = false;
+            }
+
+            // プロペラ回転
+            state.propAngle += dt * (10 + state.throttle * 28);
+
+            // 雲のゆっくりとした移動
+            var ci;
+            for (ci = 0; ci < clouds.length; ci++) {
+                clouds[ci].x += clouds[ci].drift * dt;
+                if (clouds[ci].x > 1100) clouds[ci].x = -1100;
+            }
+
+            // リングの上下ゆれ＆通過判定
+            var ri, r, dx, dy, dz, d2;
+            for (ri = 0; ri < rings.length; ri++) {
+                r = rings[ri];
+                if (r.collected) continue;
+                r.y = r.baseY + Math.sin(elapsedSec * 2.0 + r.phase) * 1.4;
+                dx = state.x - r.x;
+                dy = state.y - r.y;
+                dz = state.z - r.z;
+                d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 < 18 * 18) {
+                    r.collected = true;
+                    state.ringsCollected++;
+                    state.flashAlpha = 0.45;
+                    var allClear = (state.ringsCollected >= state.totalRings);
+                    playRingSound(allClear);
+                    if (allClear) {
+                        showBanner('全10個のリングをクリアしました！おめでとう！', true, 6500);
+                    } else {
+                        showBanner('リング通過！ (' + state.ringsCollected + ' / ' + state.totalRings + ')', false, 1800);
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 9. Canvas 2D 3Dレンダリングエンジン
+        // -----------------------------------------------------------------
+        function drawSkyAndOcean() {
+            var cx = viewW * 0.5;
+            var cy = viewH * 0.5;
+            var diag = Math.sqrt(viewW * viewW + viewH * viewH) + 120;
+            // 地平線の縦オフセット（ピッチ角に対応）
+            var horizonY = Math.tan(cam.pitch) * focalLength;
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(cam.roll);
+
+            // 空のグラデーション
+            var skyGrad = ctx.createLinearGradient(0, horizonY - diag, 0, horizonY);
+            skyGrad.addColorStop(0.0, '#0c4a6e');
+            skyGrad.addColorStop(0.55, '#38bdf8');
+            skyGrad.addColorStop(1.0, '#bae6fd');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(-diag, horizonY - diag, diag * 2, diag + 2);
+
+            // 海のグラデーション
+            var seaGrad = ctx.createLinearGradient(0, horizonY, 0, horizonY + diag);
+            seaGrad.addColorStop(0.0, '#7dd3fc');
+            seaGrad.addColorStop(0.06, '#0284c7');
+            seaGrad.addColorStop(0.45, '#0369a1');
+            seaGrad.addColorStop(1.0, '#0c4a6e');
+            ctx.fillStyle = seaGrad;
+            ctx.fillRect(-diag, horizonY, diag * 2, diag);
+
+            // 水平線の淡いもや（ヘイズ）
+            ctx.fillStyle = 'rgba(224, 242, 254, 0.45)';
+            ctx.fillRect(-diag, horizonY - 4, diag * 2, 8);
+
+            ctx.restore();
+
+            // 太陽（空のアクセント）
+            var sunCam = worldToCam(cam.x + 900, cam.y + 520, cam.z - 1200);
+            if (sunCam.z > 10) {
+                var sp = projectPoint(sunCam);
+                ctx.save();
+                ctx.fillStyle = 'rgba(254, 240, 138, 0.32)';
+                ctx.beginPath();
+                ctx.arc(sp.sx, sp.sy, 46, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fef9c3';
+                ctx.beginPath();
+                ctx.arc(sp.sx, sp.sy, 22, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // 海面のスピード感・高度感を出す控えめな波ライン
+        function drawOceanGrid() {
+            var step = 120;
+            var baseX = Math.floor(state.x / step) * step;
+            var baseZ = Math.floor(state.z / step) * step;
+            var gx, gz, wx, wz, p1, p2, s1, s2;
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(186, 230, 253, 0.22)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+
+            for (gx = -4; gx <= 4; gx++) {
+                for (gz = -4; gz <= 4; gz++) {
+                    wx = baseX + gx * step;
+                    wz = baseZ + gz * step;
+                    p1 = worldToCam(wx - 14, 0, wz);
+                    p2 = worldToCam(wx + 14, 0, wz);
+                    if (p1.z > 8 && p2.z > 8 && p1.z < 900) {
+                        s1 = projectPoint(p1);
+                        s2 = projectPoint(p2);
+                        ctx.moveTo(s1.sx, s1.sy);
+                        ctx.lineTo(s2.sx, s2.sy);
+                    }
+                }
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 3Dオブジェクトを Painter's Algorithm（Zソート）で描画
+        function draw3DScene() {
+            var drawList = [];
+            var i, j, poly, camPts, clipped, projPts, minZ, avgZ, dx, dy, dz;
+
+            // 1) 静的ポリゴン（島・滑走路・山・建物・木）
+            for (i = 0; i < staticPolys.length; i++) {
+                poly = staticPolys[i];
+                // 遠すぎるポリゴンを早期スキップ
+                dx = poly.cx - cam.x;
+                dz = poly.cz - cam.z;
+                if (dx * dx + dz * dz > FAR_Z * FAR_Z) continue;
+
+                camPts = [];
+                var anyInFront = false;
+                for (j = 0; j < poly.pts.length; j++) {
+                    var cp = worldToCam(poly.pts[j].x, poly.pts[j].y, poly.pts[j].z);
+                    if (cp.z >= NEAR_Z) anyInFront = true;
+                    camPts.push(cp);
+                }
+                if (!anyInFront) continue;
+
+                clipped = clipPolygonNear(camPts);
+                if (clipped.length < 3) continue;
+
+                projPts = [];
+                avgZ = 0;
+                for (j = 0; j < clipped.length; j++) {
+                    projPts.push(projectPoint(clipped[j]));
+                    avgZ += clipped[j].z;
+                }
+                avgZ = avgZ / clipped.length + poly.bias;
+
+                drawList.push({
+                    type: 'poly',
+                    depth: avgZ,
+                    pts: projPts,
+                    fill: poly.fill,
+                    stroke: poly.stroke
+                });
+            }
+
+            // 2) 3D雲（複数円のビルボード）
+            for (i = 0; i < clouds.length; i++) {
+                var cl = clouds[i];
+                var clCam = worldToCam(cl.x, cl.y, cl.z);
+                if (clCam.z < 20 || clCam.z > FAR_Z) continue;
+                var clProj = projectPoint(clCam);
+                drawList.push({
+                    type: 'cloud',
+                    depth: clCam.z,
+                    sx: clProj.sx,
+                    sy: clProj.sy,
+                    rad: cl.r * clProj.scale
+                });
+            }
+
+            // 3) ゴールデンリング（12角形の3Dリング）
+            for (i = 0; i < rings.length; i++) {
+                var rg = rings[i];
+                if (rg.collected) continue;
+                var centerCam = worldToCam(rg.x, rg.y, rg.z);
+                if (centerCam.z < -20 || centerCam.z > FAR_Z) continue;
+
+                var segs = 14;
+                var cosA = Math.cos(rg.angleY);
+                var sinA = Math.sin(rg.angleY);
+                var ringCamPts = [];
+                var ringInFront = false;
+
+                for (j = 0; j < segs; j++) {
+                    var th = (j / segs) * Math.PI * 2;
+                    var lx = Math.cos(th) * rg.radius;
+                    var ly = Math.sin(th) * rg.radius;
+                    var wx = rg.x + lx * cosA;
+                    var wy = rg.y + ly;
+                    var wz = rg.z - lx * sinA;
+                    var rcp = worldToCam(wx, wy, wz);
+                    if (rcp.z >= NEAR_Z) ringInFront = true;
+                    ringCamPts.push(rcp);
+                }
+                if (!ringInFront) continue;
+
+                var ringClipped = clipPolygonNear(ringCamPts);
+                if (ringClipped.length < 3) continue;
+
+                var ringProj = [];
+                var rAvgZ = 0;
+                for (j = 0; j < ringClipped.length; j++) {
+                    ringProj.push(projectPoint(ringClipped[j]));
+                    rAvgZ += ringClipped[j].z;
+                }
+                rAvgZ = rAvgZ / ringClipped.length;
+
+                drawList.push({
+                    type: 'ring',
+                    depth: rAvgZ,
+                    pts: ringProj,
+                    lineW: clamp((2.6 * focalLength) / Math.max(10, rAvgZ), 2.5, 16)
+                });
+            }
+
+            // 奥から手前へソート（Painter's Algorithm）
+            drawList.sort(function (a, b) {
+                return b.depth - a.depth;
+            });
+
+            // 描画実行
+            var item, k;
+            for (i = 0; i < drawList.length; i++) {
+                item = drawList[i];
+                if (item.type === 'poly') {
+                    ctx.beginPath();
+                    ctx.moveTo(item.pts[0].sx, item.pts[0].sy);
+                    for (k = 1; k < item.pts.length; k++) {
+                        ctx.lineTo(item.pts[k].sx, item.pts[k].sy);
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = item.fill;
+                    ctx.fill();
+                    if (item.stroke) {
+                        ctx.strokeStyle = item.stroke;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                } else if (item.type === 'cloud') {
+                    var r0 = item.rad;
+                    if (r0 > 1.5 && r0 < 360) {
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+                        ctx.beginPath();
+                        ctx.arc(item.sx, item.sy, r0, 0, Math.PI * 2);
+                        ctx.arc(item.sx - r0 * 0.85, item.sy + r0 * 0.15, r0 * 0.72, 0, Math.PI * 2);
+                        ctx.arc(item.sx + r0 * 0.85, item.sy + r0 * 0.12, r0 * 0.76, 0, Math.PI * 2);
+                        ctx.arc(item.sx + r0 * 0.25, item.sy - r0 * 0.4, r0 * 0.65, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (item.type === 'ring') {
+                    ctx.beginPath();
+                    ctx.moveTo(item.pts[0].sx, item.pts[0].sy);
+                    for (k = 1; k < item.pts.length; k++) {
+                        ctx.lineTo(item.pts[k].sx, item.pts[k].sy);
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = '#d97706';
+                    ctx.lineWidth = item.lineW + 3;
+                    ctx.stroke();
+                    ctx.strokeStyle = '#fde047';
+                    ctx.lineWidth = item.lineW;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 後方視点時の自機シルエット（バンク＆ピッチに連動）
+        function drawChaseAirplane() {
+            if (settings.cameraMode !== 'chase') return;
+
+            var cx = viewW * 0.5;
+            var cy = viewH * 0.62 - state.pitch * 45;
+            var visualRoll = -state.roll * 0.75; // 左バンクで左翼が下がる
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(visualRoll);
+
+            // 影（機体下部の立体感）
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+            ctx.beginPath();
+            ctx.ellipse(0, 14, 42, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 主翼（赤）
+            ctx.fillStyle = '#ef4444';
+            ctx.strokeStyle = '#991b1b';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-78, 2);
+            ctx.lineTo(-10, -7);
+            ctx.lineTo(10, -7);
+            ctx.lineTo(78, 2);
+            ctx.lineTo(74, 9);
+            ctx.lineTo(-74, 9);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 主翼端の白いストライプ
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(-74, 2, 10, 6);
+            ctx.fillRect(64, 2, 10, 6);
+
+            // 水平尾翼（白）
+            ctx.fillStyle = '#f8fafc';
+            ctx.strokeStyle = '#475569';
+            ctx.beginPath();
+            ctx.moveTo(-28, -4);
+            ctx.lineTo(28, -4);
+            ctx.lineTo(24, 2);
+            ctx.lineTo(-24, 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 胴体（白＋赤ライン）
+            ctx.fillStyle = '#f1f5f9';
+            ctx.strokeStyle = '#334155';
+            ctx.beginPath();
+            ctx.ellipse(0, 2, 11, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // キャノピー（水色ガラス）
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.ellipse(0, -6, 7.5, 6, 0, Math.PI, Math.PI * 2);
+            ctx.fill();
+
+            // 垂直尾翼（赤）
+            ctx.fillStyle = '#dc2626';
+            ctx.strokeStyle = '#7f1d1d';
+            ctx.beginPath();
+            ctx.moveTo(-3, -2);
+            ctx.lineTo(0, -24);
+            ctx.lineTo(3, -2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 回転するプロペラの残像リング（機首前方）
+            var propR = 14;
+            ctx.strokeStyle = 'rgba(226, 232, 240, 0.45)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 2, propR, 0, Math.PI * 2);
+            ctx.stroke();
+
+            var px = Math.cos(state.propAngle) * propR;
+            var py = Math.sin(state.propAngle) * propR;
+            ctx.strokeStyle = 'rgba(30, 41, 59, 0.75)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(-px, 2 - py);
+            ctx.lineTo(px, 2 + py);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // コックピット枠（コックピット視点時）
+        function drawCockpitFrame() {
+            if (settings.cameraMode !== 'cockpit') return;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+
+            // 左ピラー
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(viewW * 0.11, 0);
+            ctx.lineTo(viewW * 0.04, viewH);
+            ctx.lineTo(0, viewH);
+            ctx.closePath();
+            ctx.fill();
+
+            // 右ピラー
+            ctx.beginPath();
+            ctx.moveTo(viewW, 0);
+            ctx.lineTo(viewW * 0.89, 0);
+            ctx.lineTo(viewW * 0.96, viewH);
+            ctx.lineTo(viewW, viewH);
+            ctx.closePath();
+            ctx.fill();
+
+            // 下部ダッシュボード
+            ctx.beginPath();
+            ctx.moveTo(0, viewH);
+            ctx.lineTo(0, viewH * 0.88);
+            ctx.quadraticCurveTo(viewW * 0.5, viewH * 0.78, viewW, viewH * 0.88);
+            ctx.lineTo(viewW, viewH);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, viewH * 0.88);
+            ctx.quadraticCurveTo(viewW * 0.5, viewH * 0.78, viewW, viewH * 0.88);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 中央の人工水平儀（ピッチラダー）＆最寄りリング案内矢印
+        function drawCenterHUD() {
+            var cx = viewW * 0.5;
+            var cy = viewH * 0.5;
+
+            // 1) 人工水平儀・ピッチバー
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, 110, 0, Math.PI * 2);
+            ctx.clip();
+
+            ctx.translate(cx, cy);
+            ctx.rotate(state.roll);
+
+            var pxPerRad = 220;
+            var pitchOffset = state.pitch * pxPerRad;
+            ctx.strokeStyle = 'rgba(134, 239, 172, 0.75)';
+            ctx.fillStyle = 'rgba(134, 239, 172, 0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'left';
+
+            var deg, yBar, wBar;
+            for (deg = -30; deg <= 30; deg += 10) {
+                yBar = pitchOffset - (deg * Math.PI / 180) * pxPerRad;
+                wBar = (deg === 0) ? 74 : 34;
+                ctx.beginPath();
+                ctx.moveTo(-wBar, yBar);
+                ctx.lineTo(-14, yBar);
+                ctx.moveTo(14, yBar);
+                ctx.lineTo(wBar, yBar);
+                ctx.stroke();
+
+                if (deg !== 0) {
+                    ctx.fillText(String(deg), wBar + 4, yBar + 3);
+                }
+            }
+            ctx.restore();
+
+            // 固定レティクル（中央照準）
+            ctx.save();
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 24, cy);
+            ctx.lineTo(cx - 8, cy);
+            ctx.lineTo(cx - 4, cy + 5);
+            ctx.moveTo(cx + 24, cy);
+            ctx.lineTo(cx + 8, cy);
+            ctx.lineTo(cx + 4, cy + 5);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fde047';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 2.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // 2) 最も近い未取得リングへの方向ガイド
+            var nearest = findNearestRing();
+            if (nearest) {
+                var rc = worldToCam(nearest.ring.x, nearest.ring.y, nearest.ring.z);
+                var offScreen = true;
+                if (rc.z > 5) {
+                    var rp = projectPoint(rc);
+                    if (rp.sx > 50 && rp.sx < viewW - 50 && rp.sy > 50 && rp.sy < viewH - 50) {
+                        offScreen = false;
+                        // 画面内なら小さな距離ラベルをリング下に表示
+                        ctx.save();
+                        ctx.font = 'bold 11px monospace';
+                        ctx.fillStyle = '#fef08a';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(Math.round(nearest.dist) + 'm', rp.sx, rp.sy + 26);
+                        ctx.restore();
+                    }
+                }
+                if (offScreen) {
+                    // 画面外のリング方向を指す矢印（中央円周上）
+                    var ang = Math.atan2(-rc.y, rc.x);
+                    if (rc.z < 0) {
+                        ang = Math.atan2(-rc.y, (rc.x >= 0) ? 1 : -1);
+                    }
+                    var rad = Math.min(viewW, viewH) * 0.34;
+                    var ax = cx + Math.cos(ang) * rad;
+                    var ay = cy + Math.sin(ang) * rad;
+
+                    ctx.save();
+                    ctx.translate(ax, ay);
+                    ctx.rotate(ang);
+                    ctx.fillStyle = '#facc15';
+                    ctx.strokeStyle = '#78350f';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(12, 0);
+                    ctx.lineTo(-8, -8);
+                    ctx.lineTo(-4, 0);
+                    ctx.lineTo(-8, 8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+
+                    ctx.save();
+                    ctx.font = 'bold 11px monospace';
+                    ctx.fillStyle = '#fef08a';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(Math.round(nearest.dist) + 'm', ax, ay + 18);
+                    ctx.restore();
+                }
+            }
+
+            // リング通過時のフラッシュ演出
+            if (state.flashAlpha > 0.01) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(254, 240, 138, ' + state.flashAlpha.toFixed(2) + ')';
+                ctx.fillRect(0, 0, viewW, viewH);
+                ctx.restore();
+            }
+        }
+
+        function findNearestRing() {
+            var best = null;
+            var bestD = 999999;
+            var i, r, dx, dy, dz, d;
+            for (i = 0; i < rings.length; i++) {
+                r = rings[i];
+                if (r.collected) continue;
+                dx = r.x - state.x;
+                dy = r.y - state.y;
+                dz = r.z - state.z;
+                d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (d < bestD) {
+                    bestD = d;
+                    best = { ring: r, dist: d };
+                }
+            }
+            return best;
+        }
+
+        // -----------------------------------------------------------------
+        // 10. ミニレーダー＆数値HUD更新
+        // -----------------------------------------------------------------
+        function drawRadar() {
+            var w = radarCanvas.width;
+            var h = radarCanvas.height;
+            var cx = w * 0.5;
+            var cy = h * 0.5;
+            var scale = 0.058; // レーダー縮尺
+
+            rctx.clearRect(0, 0, w, h);
+
+            // レーダー同心円・十字線
+            rctx.strokeStyle = 'rgba(125, 211, 252, 0.25)';
+            rctx.lineWidth = 1;
+            rctx.beginPath();
+            rctx.arc(cx, cy, 26, 0, Math.PI * 2);
+            rctx.arc(cx, cy, 48, 0, Math.PI * 2);
+            rctx.moveTo(cx, 4);
+            rctx.lineTo(cx, h - 4);
+            rctx.moveTo(4, cy);
+            rctx.lineTo(w - 4, cy);
+            rctx.stroke();
+
+            var sinY = Math.sin(state.yaw);
+            var cosY = Math.cos(state.yaw);
+
+            function toRadar(wx, wz) {
+                var dx = wx - state.x;
+                var dz = wz - state.z;
+                // 自機の向きが常にレーダー上（-Y）になるように回転
+                var rx = dx * cosY - dz * sinY;
+                var ry = dx * sinY + dz * cosY;
+                return {
+                    x: cx + rx * scale,
+                    y: cy + ry * scale
+                };
+            }
+
+            // 島々（緑の点）
+            var i, p;
+            rctx.fillStyle = 'rgba(74, 222, 128, 0.55)';
+            for (i = 0; i < islandsInfo.length; i++) {
+                p = toRadar(islandsInfo[i].x, islandsInfo[i].z);
+                rctx.beginPath();
+                rctx.arc(p.x, p.y, Math.max(3, islandsInfo[i].r * scale * 0.65), 0, Math.PI * 2);
+                rctx.fill();
+            }
+
+            // 滑走路（白の線）
+            var rw1 = toRadar(0, -175);
+            var rw2 = toRadar(0, 115);
+            rctx.strokeStyle = '#ffffff';
+            rctx.lineWidth = 2.5;
+            rctx.beginPath();
+            rctx.moveTo(rw1.x, rw1.y);
+            rctx.lineTo(rw2.x, rw2.y);
+            rctx.stroke();
+
+            // 未取得リング（金色の点）
+            var nearest = findNearestRing();
+            for (i = 0; i < rings.length; i++) {
+                if (rings[i].collected) continue;
+                p = toRadar(rings[i].x, rings[i].z);
+                // レーダー枠内にクランプ
+                var rdx = p.x - cx;
+                var rdy = p.y - cy;
+                var rd = Math.sqrt(rdx * rdx + rdy * rdy);
+                if (rd > 50) {
+                    p.x = cx + (rdx / rd) * 50;
+                    p.y = cy + (rdy / rd) * 50;
+                }
+                var isClosest = (nearest && nearest.ring === rings[i]);
+                rctx.fillStyle = isClosest ? '#fef08a' : '#eab308';
+                rctx.beginPath();
+                rctx.arc(p.x, p.y, isClosest ? 4.2 : 2.8, 0, Math.PI * 2);
+                rctx.fill();
+            }
+
+            // 自機マーカー（中央の上向き三角）
+            rctx.fillStyle = '#38bdf8';
+            rctx.beginPath();
+            rctx.moveTo(cx, cy - 6);
+            rctx.lineTo(cx - 4.5, cy + 5);
+            rctx.lineTo(cx + 4.5, cy + 5);
+            rctx.closePath();
+            rctx.fill();
+        }
+
+        function updateHUDText() {
+            var knots = Math.round(state.speed * 1.75);
+            var alt = Math.max(0, Math.round(state.y - 1.5));
+
+            var deg = Math.round((-state.yaw * 180 / Math.PI) % 360);
+            if (deg < 0) deg += 360;
+            var dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            var dirStr = dirs[Math.round(deg / 45) % 8];
+
+            document.getElementById('val-speed').innerHTML = knots + ' kt';
+            document.getElementById('val-alt').innerHTML = alt + ' m';
+            document.getElementById('val-hdg').innerHTML = pad3(deg) + '° ' + dirStr;
+            document.getElementById('val-rings').innerHTML = state.ringsCollected + ' / ' + state.totalRings;
+        }
+
+        function updateThrottleUI() {
+            var pct = Math.round(state.throttle * 100);
+            document.getElementById('throttle-fill').style.height = pct + '%';
+            document.getElementById('throttle-val').innerHTML = pct + '%';
+        }
+
+        // -----------------------------------------------------------------
+        // 11. イベント設定（古いブラウザ対応の keyCode / mouse / touch）
+        // -----------------------------------------------------------------
+        function bindHoldButton(id, keyName) {
+            var el = document.getElementById(id);
+            if (!el) return;
+
+            function onDown(e) {
+                if (e && e.preventDefault) e.preventDefault();
+                input[keyName] = true;
+                el.className = el.className + ' pad-btn-active';
+            }
+            function onUp(e) {
+                if (e && e.preventDefault) e.preventDefault();
+                input[keyName] = false;
+                el.className = el.className.replace(/ pad-btn-active/g, '');
+            }
+
+            el.addEventListener('mousedown', onDown, false);
+            el.addEventListener('mouseup', onUp, false);
+            el.addEventListener('mouseleave', onUp, false);
+            el.addEventListener('touchstart', onDown, false);
+            el.addEventListener('touchend', onUp, false);
+            el.addEventListener('touchcancel', onUp, false);
+        }
+
+        function toggleCamera() {
+            settings.cameraMode = (settings.cameraMode === 'chase') ? 'cockpit' : 'chase';
+            document.getElementById('btn-cam').innerHTML =
+                (settings.cameraMode === 'chase') ? '視点: 後方 (C)' : '視点: コックピット (C)';
+        }
+
+        function toggleInvert() {
+            settings.invertPitch = !settings.invertPitch;
+            var btn = document.getElementById('btn-inv');
+            btn.innerHTML = settings.invertPitch ? '上下反転: ON' : '上下反転: OFF';
+            btn.className = settings.invertPitch ? 'hud-btn hud-btn-on' : 'hud-btn';
+        }
+
+        function toggleSound() {
+            settings.soundEnabled = !settings.soundEnabled;
+            var btn = document.getElementById('btn-snd');
+            btn.innerHTML = settings.soundEnabled ? '音声: ON' : '音声: OFF';
+            btn.className = settings.soundEnabled ? 'hud-btn hud-btn-on' : 'hud-btn';
+            if (settings.soundEnabled) {
+                playBeep(660, 0.12, 0.1);
+            }
+        }
+
+        function toggleHelp() {
+            settings.showHelp = !settings.showHelp;
+            document.getElementById('help-panel').style.display = settings.showHelp ? 'block' : 'none';
+        }
+
+        function setupEvents() {
+            // キーボード（keyCode ベースで古いブラウザ完全対応）
+            window.addEventListener('keydown', function (e) {
+                var kc = e.keyCode || e.which;
+                if (kc === 38 || kc === 87) { input.up = true; }         // ↑ / W
+                else if (kc === 40 || kc === 83) { input.down = true; }  // ↓ / S
+                else if (kc === 37 || kc === 65) { input.left = true; }  // ← / A
+                else if (kc === 39 || kc === 68) { input.right = true; } // → / D
+                else if (kc === 16 || kc === 69) { input.thrUp = true; } // Shift / E
+                else if (kc === 17 || kc === 81) { input.thrDown = true; } // Ctrl / Q
+                else if (kc === 67) { toggleCamera(); }                  // C
+                else if (kc === 82) {                                    // R
+                    resetFlight(state.ringsCollected >= state.totalRings);
+                }
+            }, false);
+
+            window.addEventListener('keyup', function (e) {
+                var kc = e.keyCode || e.which;
+                if (kc === 38 || kc === 87) { input.up = false; }
+                else if (kc === 40 || kc === 83) { input.down = false; }
+                else if (kc === 37 || kc === 65) { input.left = false; }
+                else if (kc === 39 || kc === 68) { input.right = false; }
+                else if (kc === 16 || kc === 69) { input.thrUp = false; }
+                else if (kc === 17 || kc === 81) { input.thrDown = false; }
+            }, false);
+
+            // 上部ボタン
+            document.getElementById('btn-cam').addEventListener('click', toggleCamera, false);
+            document.getElementById('btn-inv').addEventListener('click', toggleInvert, false);
+            document.getElementById('btn-snd').addEventListener('click', toggleSound, false);
+            document.getElementById('btn-help').addEventListener('click', toggleHelp, false);
+            document.getElementById('btn-rst').addEventListener('click', function () {
+                resetFlight(state.ringsCollected >= state.totalRings);
+            }, false);
+            document.getElementById('banner-reset-btn').addEventListener('click', function () {
+                resetFlight(state.ringsCollected >= state.totalRings);
+            }, false);
+
+            // 操縦パッド＆スロットル増減ボタン
+            bindHoldButton('pad-up', 'up');
+            bindHoldButton('pad-down', 'down');
+            bindHoldButton('pad-left', 'left');
+            bindHoldButton('pad-right', 'right');
+            bindHoldButton('btn-thr-up', 'thrUp');
+            bindHoldButton('btn-thr-dn', 'thrDown');
+
+            // スロットルバー直接ドラッグ
+            var track = document.getElementById('throttle-track');
+            var draggingThr = false;
+
+            function setThrFromY(clientY) {
+                var rect = track.getBoundingClientRect();
+                var ratio = 1.0 - (clientY - rect.top) / rect.height;
+                state.throttle = clamp(ratio, 0.0, 1.0);
+                updateThrottleUI();
+            }
+
+            track.addEventListener('mousedown', function (e) {
+                draggingThr = true;
+                setThrFromY(e.clientY);
+            }, false);
+            window.addEventListener('mousemove', function (e) {
+                if (draggingThr) setThrFromY(e.clientY);
+            }, false);
+            window.addEventListener('mouseup', function () {
+                draggingThr = false;
+            }, false);
+
+            track.addEventListener('touchstart', function (e) {
+                if (e.preventDefault) e.preventDefault();
+                draggingThr = true;
+                if (e.touches && e.touches.length > 0) setThrFromY(e.touches[0].clientY);
+            }, false);
+            window.addEventListener('touchmove', function (e) {
+                if (draggingThr && e.touches && e.touches.length > 0) {
+                    setThrFromY(e.touches[0].clientY);
+                }
+            }, false);
+            window.addEventListener('touchend', function () {
+                draggingThr = false;
+            }, false);
+
+            // 画面リサイズ
+            window.addEventListener('resize', resizeCanvas, false);
+        }
+
+        function resizeCanvas() {
+            viewW = window.innerWidth || document.documentElement.clientWidth || 800;
+            viewH = window.innerHeight || document.documentElement.clientHeight || 600;
+            canvas.width = viewW;
+            canvas.height = viewH;
+            focalLength = Math.max(360, viewW * 0.58);
+        }
+
+        // -----------------------------------------------------------------
+        // 12. メインループ
+        // -----------------------------------------------------------------
+        function loop(timestamp) {
+            reqAnimFrame(loop);
+
+            var nowSec = (timestamp || (+new Date())) * 0.001;
+            var dt = lastTimestamp ? (nowSec - lastTimestamp) : 0.016;
+            if (dt > 0.05) dt = 0.05;
+            if (dt < 0.001) dt = 0.016;
+            lastTimestamp = nowSec;
+
+            updateFlight(dt, nowSec);
+            updateCameraTransform();
+
+            // 描画パイプライン（純粋なCanvas 2D）
+            drawSkyAndOcean();
+            drawOceanGrid();
+            draw3DScene();
+            drawChaseAirplane();
+            drawCockpitFrame();
+            drawCenterHUD();
+            drawRadar();
+            updateHUDText();
+        }
+
+        // ページ読み込み完了後に開始
+        window.onload = function () {
+            canvas = document.getElementById('sim-canvas');
+            ctx = canvas.getContext('2d');
+            radarCanvas = document.getElementById('radar-canvas');
+            rctx = radarCanvas.getContext('2d');
+
+            resizeCanvas();
+            buildWorld();
+            setupEvents();
+            resetFlight(false);
+            reqAnimFrame(loop);
+        };
+    })();
+    </script>
+</body>
+</html>

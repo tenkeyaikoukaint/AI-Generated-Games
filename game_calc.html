@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>4-BIT MICROCOMPUTER GAME CALCULATOR (MG-880 Style)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* 1980年代レトロ電卓・7セグメントLCD用カスタムスタイル */
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #18181b;
+      color: #f4f4f5;
+      user-select: none;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* 金属ヘアライン・プラスチック筐体テクスチャ */
+    .calc-body {
+      background: linear-gradient(145deg, #2d3138, #1e2126);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      border: 2px solid #3f444e;
+    }
+    .metal-faceplate {
+      background: linear-gradient(180deg, #d4d7dd 0%, #b8bcc4 50%, #9fa4ae 100%);
+      box-shadow: inset 0 1px 2px rgba(255,255,255,0.8), 0 2px 4px rgba(0,0,0,0.4);
+      border: 1px solid #7c828d;
+    }
+
+    /* 反射型モノクロ液晶パネル（LCD） */
+    .lcd-screen {
+      background-color: #9ea995;
+      background-image: radial-gradient(rgba(0,0,0,0.04) 1px, transparent 0);
+      background-size: 3px 3px;
+      box-shadow: inset 0 4px 10px rgba(0, 0, 0, 0.45), inset 0 -1px 2px rgba(255, 255, 255, 0.3);
+      border: 3px solid #4b5247;
+    }
+
+    /* 7セグメントSVGのアクティブ/非アクティブ色（液晶のゴースト影も再現） */
+    .seg-on {
+      fill: #1b2218;
+      filter: drop-shadow(1px 1px 0px rgba(27, 34, 24, 0.25));
+      transition: fill 0.04s ease;
+    }
+    .seg-off {
+      fill: rgba(27, 34, 24, 0.075);
+      transition: fill 0.04s ease;
+    }
+
+    /* レトロ電卓のプラスチックボタン立体感 */
+    .calc-btn {
+      position: relative;
+      border-radius: 6px;
+      font-weight: 700;
+      box-shadow: 0 4px 0 #111317, 0 5px 6px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.3);
+      transition: transform 0.05s ease, box-shadow 0.05s ease;
+      touch-action: manipulation;
+    }
+    .calc-btn:active, .calc-btn.pressed {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #111317, 0 2px 3px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.2);
+    }
+    .btn-num {
+      background: linear-gradient(180deg, #4b525e, #363b44);
+      color: #f8fafc;
+    }
+    .btn-op {
+      background: linear-gradient(180deg, #d97706, #b45309);
+      color: #ffffff;
+    }
+    .btn-ac {
+      background: linear-gradient(180deg, #dc2626, #991b1b);
+      color: #ffffff;
+    }
+    .btn-game {
+      background: linear-gradient(180deg, #0284c7, #0369a1);
+      color: #ffffff;
+    }
+
+    /* スライドスイッチ風UI */
+    .slide-track {
+      background: #181a1f;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    }
+    .slide-knob {
+      background: linear-gradient(180deg, #e2e8f0, #94a3b8);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.6), inset 0 1px 0 #fff;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* ニブル更新ハイライトアニメーション */
+    @keyframes nibbleFlash {
+      0% { background-color: rgba(250, 204, 21, 0.7); color: #000; }
+      100% { background-color: transparent; }
+    }
+    .nibble-updated {
+      animation: nibbleFlash 0.35s ease-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-3 sm:p-6 flex flex-col items-center justify-center">
+
+  <!-- ヘッダータイトル -->
+  <header class="w-full max-w-6xl mb-4 flex flex-col sm:flex-row items-center justify-between gap-2 border-b border-zinc-700 pb-3">
+    <div>
+      <h1 class="text-lg sm:text-xl font-bold tracking-wider text-amber-400 flex items-center gap-2">
+        <span class="inline-block w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+        4-BIT MCU GAME CALCULATOR EMULATOR
+      </h1>
+      <p class="text-xs text-zinc-400">仮想4ビットワンチップマイコン (RAM 32ニブル / BCD演算＆デジタルインベーダー内蔵)</p>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <button id="btn-sound-toggle" class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-zinc-200 flex items-center gap-1.5 transition">
+        <span id="sound-icon">🔊</span> <span id="sound-label">圧電ブザー: ON</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- メインコンテナ: 左に電卓ハードウェア、右に4ビットマイコン内部モニター -->
+  <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- 左側: 1980年代レトロゲーム電卓ハードウェアUI (5カラム) -->
+    <section class="lg:col-span-5 flex flex-col items-center">
+      <div class="calc-body w-full max-w-[380px] rounded-2xl p-4 sm:p-5">
+        
+        <!-- 上部メタルパネル: ブランドロゴ＆モード切替スイッチ -->
+        <div class="metal-faceplate rounded-xl p-3 mb-4 text-zinc-800">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-[10px] font-bold tracking-widest text-zinc-600">ELECTRONIC CALCULATOR</div>
+              <div class="text-base font-extrabold tracking-tight text-zinc-900">CASIOPEIA <span class="text-amber-700">MG-4004</span></div>
+            </div>
+            <!-- 太陽電池パネル風装飾 -->
+            <div class="w-20 h-6 bg-amber-950 rounded border border-zinc-600 grid grid-cols-4 divide-x divide-amber-800/60 overflow-hidden shadow-inner" title="ダミーソーラーパネル">
+              <div></div><div></div><div></div><div></div>
+            </div>
+          </div>
+
+          <!-- LCDディスプレイ枠 -->
+          <div class="lcd-screen rounded-lg p-2.5 sm:p-3 relative">
+            <!-- 液晶上部インジケーター -->
+            <div class="flex justify-between items-center text-[10px] font-bold text-[#252e21] mb-1 px-1 tracking-wider">
+              <div class="flex gap-2">
+                <span id="lcd-ind-calc" class="opacity-100">CALC</span>
+                <span id="lcd-ind-game" class="opacity-20">GAME</span>
+                <span id="lcd-ind-err" class="opacity-15 text-red-950">ERROR</span>
+              </div>
+              <div class="flex gap-2 mono">
+                <span id="lcd-ind-op" class="w-4 text-center"> </span>
+                <span id="lcd-ind-life">❤️❤️❤️</span>
+              </div>
+            </div>
+
+            <!-- 8桁 7セグメント液晶ディスプレイ (JavaScriptでSVG生成) -->
+            <div id="lcd-digits-container" class="grid grid-cols-8 gap-1 sm:gap-1.5 h-14 sm:h-16 items-center justify-items-center">
+              <!-- 8桁のSVGがここに挿入されます -->
+            </div>
+          </div>
+
+          <!-- モード切替スライドスイッチ & サウンド/状態バー -->
+          <div class="mt-3 flex items-center justify-between bg-zinc-300/80 px-3 py-1.5 rounded-lg border border-zinc-400">
+            <span class="text-xs font-bold text-zinc-700">MODE SELECT:</span>
+            <div class="flex items-center gap-2">
+              <span id="label-mode-calc" class="text-xs font-extrabold text-zinc-900 cursor-pointer">CALC</span>
+              <button id="mode-switch-btn" aria-label="モード切替" class="slide-track w-14 h-6 rounded-full p-1 relative cursor-pointer focus:outline-none">
+                <div id="mode-switch-knob" class="slide-knob w-6 h-4 rounded-full transform translate-x-0"></div>
+              </button>
+              <span id="label-mode-game" class="text-xs font-bold text-zinc-500 cursor-pointer">GAME</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- キーパッド領域 (4列 x 5行) -->
+        <div class="grid grid-cols-4 gap-2.5 sm:gap-3">
+          <!-- Row 1 -->
+          <button data-key="AC" class="calc-btn btn-ac py-3 text-sm sm:text-base">AC</button>
+          <button data-key="C" class="calc-btn btn-ac py-3 text-sm sm:text-base">C</button>
+          <button data-key="SCORE" class="calc-btn btn-game py-3 text-xs sm:text-sm leading-tight">SCORE<br><span class="text-[9px] opacity-80">残機/点</span></button>
+          <button data-key="/" class="calc-btn btn-op py-3 text-lg">÷</button>
+
+          <!-- Row 2 -->
+          <button data-key="7" class="calc-btn btn-num py-3 text-lg">7</button>
+          <button data-key="8" class="calc-btn btn-num py-3 text-lg">8</button>
+          <button data-key="9" class="calc-btn btn-num py-3 text-lg">9</button>
+          <button data-key="*" class="calc-btn btn-op py-3 text-lg">×</button>
+
+          <!-- Row 3 -->
+          <button data-key="4" class="calc-btn btn-num py-3 text-lg">4</button>
+          <button data-key="5" class="calc-btn btn-num py-3 text-lg">5</button>
+          <button data-key="6" class="calc-btn btn-num py-3 text-lg">6</button>
+          <button data-key="-" class="calc-btn btn-op py-3 text-lg">－</button>
+
+          <!-- Row 4 -->
+          <button data-key="1" class="calc-btn btn-num py-3 text-lg">1</button>
+          <button data-key="2" class="calc-btn btn-num py-3 text-lg">2</button>
+          <button data-key="3" class="calc-btn btn-num py-3 text-lg">3</button>
+          <button data-key="+" class="calc-btn btn-op py-3 text-lg leading-tight">＋<br><span class="text-[9px] font-normal opacity-90">AIM照準</span></button>
+
+          <!-- Row 5 -->
+          <button data-key="0" class="calc-btn btn-num py-3 text-lg">0</button>
+          <button data-key="." class="calc-btn btn-num py-3 text-lg leading-tight">・<br><span class="text-[9px] font-normal text-amber-300">AIM照準</span></button>
+          <button data-key="=" class="calc-btn btn-op col-span-2 py-3 text-lg leading-tight">＝ <span class="text-xs font-normal opacity-95">/ FIRE発射</span></button>
+        </div>
+
+        <!-- 操作ガイド（簡易説明） -->
+        <div class="mt-4 bg-zinc-900/90 border border-zinc-700/80 rounded-lg p-2.5 text-[11px] text-zinc-300 leading-relaxed">
+          <div class="font-bold text-amber-400 mb-1">📖 操作ガイド (キーボード入力も対応)</div>
+          <ul class="space-y-1 list-disc list-inside text-zinc-300">
+            <li><strong class="text-white">CALCモード:</strong> 通常の8桁電卓。内部の4ビットマイコンがBCD（二進化十進数）1桁ずつループ計算を実行します。</li>
+            <li><strong class="text-sky-400">GAMEモード (デジタルインベーダー):</strong><br>
+              <span class="text-amber-300 font-semibold">[＋]</span> または <span class="text-amber-300 font-semibold">[・]</span> で左端の照準数字(0〜9)を変更し、<span class="text-amber-300 font-semibold">[＝]</span> でビーム発射！<br>
+              先頭の敵と数字を合わせて撃破！倒した数字の合計が<strong class="text-emerald-400">10の倍数</strong>になるとUFO(<code class="bg-zinc-800 px-1 rounded">n</code>)が出現(300点ボーナス)！
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右側: 4ビットマイコン内部モニター (7カラム) -->
+    <section class="lg:col-span-7 bg-zinc-900 border border-zinc-700 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-emerald-400 flex items-center gap-2">
+            <span>🧠 4ビットマイコン内部アーキテクチャモニター</span>
+          </h2>
+          <p class="text-xs text-zinc-400">4-Bit ALU / 32-Nibble RAM / 8-Digit Segment VRAM リアルタイム可視化</p>
+        </div>
+
+        <!-- クロック・ステップ実行コントロール -->
+        <div class="flex flex-wrap items-center gap-2 bg-zinc-950 p-1.5 rounded-lg border border-zinc-800">
+          <button id="btn-cpu-run" class="px-2.5 py-1 rounded text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition">
+            ▶ 自動実行中
+          </button>
+          <button id="btn-cpu-step" class="px-2.5 py-1 rounded text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-600 transition" title="1命令ステップ実行">
+            ⏭ 1ステップ
+          </button>
+          <select id="cpu-speed-select" class="bg-zinc-800 text-xs text-zinc-200 border border-zinc-600 rounded px-2 py-1 focus:outline-none">
+            <option value="slow">低速 (観察用 4Hz)</option>
+            <option value="normal">中速 (30Hz)</option>
+            <option value="fast" selected>高速 (実機クロック)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 1. レジスタ＆フラグ状態 -->
+      <div>
+        <div class="text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider">CPU レジスタ & ステータスフラグ (4-Bit Core)</div>
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mono">
+          <!-- Accumulator A -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5">
+            <div class="text-[10px] text-zinc-400">ACC (Aレジスタ)</div>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="reg-a-hex" class="text-lg font-bold text-amber-400">0x0</span>
+              <span id="reg-a-dec" class="text-xs text-zinc-400">(0)</span>
+            </div>
+            <div id="reg-a-bin" class="text-xs text-emerald-400 mt-0.5 tracking-widest">0000</div>
+          </div>
+
+          <!-- Register X -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5">
+            <div class="text-[10px] text-zinc-400">REG X (汎用/ポインタ)</div>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="reg-x-hex" class="text-lg font-bold text-sky-400">0x0</span>
+              <span id="reg-x-dec" class="text-xs text-zinc-400">(0)</span>
+            </div>
+            <div id="reg-x-bin" class="text-xs text-sky-300 mt-0.5 tracking-widest">0000</div>
+          </div>
+
+          <!-- Register Y -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5">
+            <div class="text-[10px] text-zinc-400">REG Y (汎用/ループ)</div>
+            <div class="flex items-baseline justify-between mt-1">
+              <span id="reg-y-hex" class="text-lg font-bold text-purple-400">0x0</span>
+              <span id="reg-y-dec" class="text-xs text-zinc-400">(0)</span>
+            </div>
+            <div id="reg-y-bin" class="text-xs text-purple-300 mt-0.5 tracking-widest">0000</div>
+          </div>
+
+          <!-- Flags C / Z -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5">
+            <div class="text-[10px] text-zinc-400">FLAGS (状態フラグ)</div>
+            <div class="flex items-center gap-3 mt-1.5">
+              <div>
+                <span class="text-[10px] text-zinc-500">C:</span>
+                <span id="flag-c" class="text-sm font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">0</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-zinc-500">Z:</span>
+                <span id="flag-z" class="text-sm font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">1</span>
+              </div>
+            </div>
+            <div class="text-[10px] text-zinc-500 mt-1">Carry / Zero</div>
+          </div>
+
+          <!-- PC & Cycles -->
+          <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 col-span-2 sm:col-span-1">
+            <div class="text-[10px] text-zinc-400">PC / 実行ステップ</div>
+            <div class="text-sm font-bold text-rose-400 mt-1" id="reg-pc">PC: 0x00</div>
+            <div class="text-[11px] text-zinc-400 mt-0.5 truncate" id="cpu-cycles">Step: 0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 現在の命令デコーダ（アセンブリ風ニーモニック表示） -->
+      <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-zinc-400">実行中の4ビット命令 (Instruction Pipeline)</span>
+          <span id="cpu-task-badge" class="text-[10px] px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">IDLE / KEY SCAN</span>
+        </div>
+        <div class="mono text-xs sm:text-sm bg-black/60 p-2.5 rounded border border-zinc-800/80 flex flex-col gap-1">
+          <div class="text-zinc-500 text-[11px]" id="asm-prev">  0x00: NOP          ; 待機中</div>
+          <div class="text-emerald-400 font-bold flex items-center gap-2" id="asm-curr">
+            <span>▶</span> <span>0x01: IN  A, KEY   ; キー入力ポートスキャン</span>
+          </div>
+          <div class="text-zinc-400 text-[11px]" id="asm-next">  0x02: JZ  0x00     ; 入力なしならループ</div>
+        </div>
+      </div>
+
+      <!-- 3. 32ニブル（16バイト）RAMダンプ -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-zinc-400">データRAM (32ニブル = 16バイト / 1セル = 4bit BCDデータ)</span>
+          <span class="text-[10px] text-zinc-500">黄色点滅 = 書き込み発生</span>
+        </div>
+        <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 mono text-xs">
+          <!-- アドレスマップ説明 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px] text-zinc-400 mb-2 pb-1.5 border-b border-zinc-800">
+            <div><span class="text-amber-400">0x00-0x07:</span> レジスタW1 (表示/入力値 8桁BCD)</div>
+            <div><span class="text-sky-400">0x08-0x0F:</span> レジスタW2 (演算バッファ/敵配列)</div>
+            <div><span class="text-purple-400">0x10-0x17:</span> スコア / 演算結果ワーク (8桁BCD)</div>
+            <div><span class="text-emerald-400">0x18-0x1F:</span> システム変数 (照準/残機/UFOカウンタ/乱数)</div>
+          </div>
+
+          <!-- 32ニブルグリッド (8列 x 4行) -->
+          <div id="ram-grid" class="grid grid-cols-8 gap-1.5 text-center">
+            <!-- JSで32セル生成 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. VRAM（8桁セグメントビットマップ） -->
+      <div>
+        <div class="text-xs font-bold text-zinc-400 mb-1.5">LCD VRAM (8桁セグメント出力ポート: gfedcba ビット状態)</div>
+        <div id="vram-grid" class="grid grid-cols-8 gap-1.5 bg-zinc-950 border border-zinc-800 rounded-lg p-2 mono text-center text-[11px]">
+          <!-- JSで8桁分のVRAM状態を表示 -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. Web Audio API 圧電ブザー音源モジュール (外部音声ファイル不要)
+     * ============================================================================
+     */
+    class PiezoBuzzer {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // 矩形波によるレトロな圧電ブザー音再生
+      beep(freq = 2000, duration = 0.04, type = 'square', volume = 0.08) {
+        if (!this.enabled) return;
+        try {
+          this.init();
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+
+          gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {
+          // ユーザー操作前のAudioContext制限を安全に無視
+        }
+      }
+
+      playKey() { this.beep(2400, 0.025, 'square', 0.05); }
+      playAim() { this.beep(1800, 0.02, 'square', 0.05); }
+      playShoot() {
+        if (!this.enabled) return;
+        try {
+          this.init();
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1400, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.08);
+          gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.08);
+        } catch (e) {}
+      }
+      playHit() {
+        this.beep(1200, 0.04, 'square', 0.08);
+        setTimeout(() => this.beep(2600, 0.07, 'square', 0.08), 45);
+      }
+      playUfoHit() {
+        const notes = [1568, 2093, 2637, 3136];
+        notes.forEach((f, idx) => {
+          setTimeout(() => this.beep(f, 0.06, 'square', 0.09), idx * 55);
+        });
+      }
+      playMiss() {
+        this.beep(300, 0.15, 'sawtooth', 0.1);
+        setTimeout(() => this.beep(200, 0.25, 'sawtooth', 0.1), 150);
+      }
+      playGameOver() {
+        const notes = [880, 784, 659, 523, 392];
+        notes.forEach((f, idx) => {
+          setTimeout(() => this.beep(f, 0.12, 'square', 0.09), idx * 120);
+        });
+      }
+      playStep() {
+        // 低速ステップ実行時の微かなクロック音
+        this.beep(900, 0.01, 'triangle', 0.02);
+      }
+    }
+
+    const buzzer = new PiezoBuzzer();
+
+    /**
+     * ============================================================================
+     * 2. 7セグメント液晶ディスプレイ レンダラー
+     * ============================================================================
+     * ビット配置: bit0=a(上), bit1=b(右上), bit2=c(右下), bit3=d(下),
+     *             bit4=e(左下), bit5=f(左上), bit6=g(中央), bit7=dp(小数点)
+     */
+    const SEG_CODES = {
+      '0': 0b00111111,
+      '1': 0b00000110,
+      '2': 0b01011011,
+      '3': 0b01001111,
+      '4': 0b01100110,
+      '5': 0b01101101,
+      '6': 0b01111101,
+      '7': 0b00000111,
+      '8': 0b01111111,
+      '9': 0b01101111,
+      ' ': 0b00000000,
+      '-': 0b01000000,
+      'n': 0b01010100, // MG-880のUFO（インベーダー親玉）シンボル
+      'u': 0b00011100, // 撃破エフェクト
+      'E': 0b01111001,
+      'r': 0b01010000,
+      'o': 0b01011100,
+      'S': 0b01101101,
+      'C': 0b00111001,
+      'A': 0b01110111,
+      'L': 0b00111000,
+      'G': 0b00111101,
+      '=': 0b01001000, // 照準と敵の境界・ビームエフェクト
+    };
+
+    function initLcdSvg() {
+      const container = document.getElementById('lcd-digits-container');
+      container.innerHTML = '';
+      for (let i = 0; i < 8; i++) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 54 88');
+        svg.setAttribute('class', 'w-full h-full max-h-14');
+        svg.innerHTML = `
+          <!-- a (top) -->
+          <polygon id="d${i}-seg0" class="seg-off" points="10,6 40,6 35,13 15,13" />
+          <!-- b (top-right) -->
+          <polygon id="d${i}-seg1" class="seg-off" points="42,8 46,13 43,41 38,37 39,14" />
+          <!-- c (bottom-right) -->
+          <polygon id="d${i}-seg2" class="seg-off" points="38,47 43,44 40,73 35,78 34,71" />
+          <!-- d (bottom) -->
+          <polygon id="d${i}-seg3" class="seg-off" points="11,74 33,74 34,81 8,81" />
+          <!-- e (bottom-left) -->
+          <polygon id="d${i}-seg4" class="seg-off" points="7,44 12,47 10,72 5,78 4,73" />
+          <!-- f (top-left) -->
+          <polygon id="d${i}-seg5" class="seg-off" points="8,13 13,8 14,14 12,37 7,41" />
+          <!-- g (middle) -->
+          <polygon id="d${i}-seg6" class="seg-off" points="12,40 37,40 40,43 36,46 11,46 8,43" />
+          <!-- dp (decimal point) -->
+          <circle id="d${i}-seg7" class="seg-off" cx="48" cy="77" r="4" />
+        `;
+        container.appendChild(svg);
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 3. 4ビットマイコンエミュレータコア (4-Bit MCU Core)
+     * ============================================================================
+     * - 4ビットレジスタ: A (0-15), X (0-15), Y (0-15)
+     * - フラグ: C (Carry: 0/1), Z (Zero: 0/1)
+     * - RAM: 32ニブル (Uint8Array(32), 各要素は 0x0 〜 0xF の4bit値のみ保持)
+     * - VRAM: 8バイト (各桁の7セグメントビットマスク)
+     * - マイクロコード命令キュー: 電卓のBCD演算やゲームロジックを4ビット命令列に分解し、
+     *   クロック速度に応じて1命令ずつ実行・可視化する。
+     */
+    class FourBitMCU {
+      constructor() {
+        // 4ビットレジスタ
+        this.A = 0; // Accumulator (4-bit)
+        this.X = 0; // Index/Pointer Register X (4-bit)
+        this.Y = 0; // Loop/Temp Register Y (4-bit)
+
+        // ステータスフラグ
+        this.C = 0; // Carry Flag (1-bit)
+        this.Z = 1; // Zero Flag (1-bit)
+
+        // プログラムカウンタ & サイクル数
+        this.PC = 0;
+        this.cycles = 0;
+
+        // 32ニブル (16バイト) データRAM: すべて 0..15 の値
+        this.ram = new Uint8Array(32);
+        this.ramModified = new Uint8Array(32); // UIフラッシュ用
+
+        // 8桁 LCD VRAM
+        this.vram = new Uint8Array(8);
+        this.vramChars = Array(8).fill(' ');
+
+        // 実行待ちマイクロ命令キュー（4ビットCPU命令列）
+        this.instructionQueue = [];
+        this.currentTaskName = 'IDLE / KEY SCAN';
+        this.historyAsm = [
+          '0x00: NOP          ; システム待機中',
+          '0x01: IN   A, KEY  ; キーマトリクススキャン',
+          '0x02: JZ   0x01    ; 入力待ちループ'
+        ];
+
+        // 実行制御状態
+        this.isRunning = true;
+        this.speedMode = 'fast'; // 'slow' | 'normal' | 'fast'
+      }
+
+      // 4ビットマスク保証とフラグ更新
+      setA(val, updateCarry = false) {
+        if (updateCarry) {
+          this.C = (val > 15 || val < 0) ? 1 : 0;
+        }
+        this.A = val & 0x0F;
+        this.Z = (this.A === 0) ? 1 : 0;
+      }
+
+      setX(val) {
+        this.X = val & 0x0F;
+      }
+
+      setY(val) {
+        this.Y = val & 0x0F;
+      }
+
+      writeRam(addr, val) {
+        const a = addr & 0x1F;
+        const v = val & 0x0F;
+        this.ram[a] = v;
+        this.ramModified[a] = 1;
+      }
+
+      readRam(addr) {
+        return this.ram[addr & 0x1F] & 0x0F;
+      }
+
+      // 4ビット命令をキューに積む（ニーモニック＋実処理クロージャ）
+      enqueueOp(mnemonic, comment, execFn, taskName = null) {
+        this.instructionQueue.push({
+          mnemonic,
+          comment,
+          execFn,
+          taskName
+        });
+      }
+
+      // 1命令ステップ実行
+      step() {
+        this.cycles++;
+        this.PC = (this.PC + 1) & 0xFF;
+
+        if (this.instructionQueue.length > 0) {
+          const op = this.instructionQueue.shift();
+          if (op.taskName) {
+            this.currentTaskName = op.taskName;
+          }
+          if (op.execFn) {
+            op.execFn(this);
+          }
+          const addrHex = '0x' + this.PC.toString(16).toUpperCase().padStart(2, '0');
+          const line = `${addrHex}: ${op.mnemonic.padEnd(12, ' ')} ; ${op.comment}`;
+          this.historyAsm.shift();
+          this.historyAsm.push(line);
+        } else {
+          // アイドル時はキースキャンポーリング命令を擬似実行
+          this.currentTaskName = 'IDLE / KEY SCAN';
+          this.setA(0);
+          const addrHex = '0x' + (this.PC & 0x0F).toString(16).toUpperCase().padStart(2, '0');
+          const idleOps = [
+            `${addrHex}: IN   A, PORT0  ; キーポート走査`,
+            `${addrHex}: JZ   SCAN_LOOP ; キー入力なし`,
+            `${addrHex}: OUT  VRAM, LCD ; 液晶リフレッシュ`
+          ];
+          this.historyAsm.shift();
+          this.historyAsm.push(idleOps[this.cycles % idleOps.length]);
+        }
+      }
+
+      // VRAMへ文字列(8文字)を反映
+      setDisplayString(str, dpIndex = -1) {
+        const padded = str.padStart(8, ' ').slice(-8);
+        for (let i = 0; i < 8; i++) {
+          const ch = padded[i];
+          this.vramChars[i] = ch;
+          let code = SEG_CODES[ch] !== undefined ? SEG_CODES[ch] : 0;
+          if (i === dpIndex) {
+            code |= 0b10000000;
+          }
+          this.vram[i] = code;
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 4. 電卓モード (BCD演算) & ゲームモード (MG-880風デジタルインベーダー) 制御ロジック
+     * ============================================================================
+     * RAMマップ (32ニブル: 0x00 〜 0x1F):
+     *   0x00..0x07 : W1 (現在入力中または表示中の8桁BCD: 0x00が最上位桁, 0x07が最下位桁)
+     *   0x08..0x0F : W2 (演算用第1オペランド または ゲームの敵レーン7マス[0x09..0x0F])
+     *   0x10..0x17 : W3 (演算結果ワーク または ゲームスコア8桁BCD)
+     *   0x18       : AIM (照準数字 0..9)
+     *   0x19       : LIFE (残機 0..3)
+     *   0x1A       : UFO_ACC (撃破数字の合計 mod 10: 0になるとUFO出現)
+     *   0x1B       : STAGE / LEVEL (難易度 1..9)
+     *   0x1C       : RNG (4ビットLFSR擬似乱数レジスタ)
+     *   0x1D       : KILLS (撃破数下位ニブル)
+     *   0x1E       : STATUS (0=IDLE, 1=PLAYING, 2=GAMEOVER, 3=SCORE_VIEW)
+     *   0x1F       : OP_CODE (0=NONE, 1=ADD, 2=SUB, 3=MUL, 4=DIV)
+     */
+    class GameCalculatorApp {
+      constructor() {
+        this.mcu = new FourBitMCU();
+        this.mode = 'CALC'; // 'CALC' | 'GAME'
+
+        // 電卓内部状態
+        this.calcInputStr = '0';
+        this.calcPrevValue = null;
+        this.calcOperator = null;
+        this.calcNewInput = true;
+        this.calcError = false;
+
+        // ゲーム内部状態
+        this.gameTimer = null;
+        this.gameTickMs = 750;
+        this.beamEffectTimer = null;
+
+        this.resetAll();
+      }
+
+      // システム全体リセット
+      resetAll() {
+        for (let i = 0; i < 32; i++) {
+          this.mcu.writeRam(i, 0);
+        }
+        // 初期乱数シード
+        this.mcu.writeRam(0x1C, 0x9);
+
+        if (this.mode === 'CALC') {
+          this.resetCalc();
+        } else {
+          this.initGame();
+        }
+      }
+
+      // ========================================================================
+      // CALC (電卓) モードロジック（4ビットマイコンBCD演算命令生成）
+      // ========================================================================
+      resetCalc() {
+        this.calcInputStr = '0';
+        this.calcPrevValue = null;
+        this.calcOperator = null;
+        this.calcNewInput = true;
+        this.calcError = false;
+
+        // RAM W1(0x00..0x07), W2(0x08..0x0F) クリア命令を4ビットCPUに投入
+        this.mcu.enqueueOp('LD   X, #0x0', 'W1ポインタ初期化', m => m.setX(0), 'CALC: CLEAR');
+        this.mcu.enqueueOp('CLR  A', 'アキュムレータクリア', m => m.setA(0));
+        for (let i = 0; i < 8; i++) {
+          this.mcu.enqueueOp(`ST   [0x0${i}], A`, `桁${i}のBCDクリア`, m => {
+            m.setX(i);
+            m.writeRam(i, 0);
+            m.writeRam(8 + i, 0);
+          });
+        }
+        this.syncCalcDisplayToRam();
+      }
+
+      syncCalcDisplayToRam() {
+        if (this.calcError) {
+          this.mcu.setDisplayString('   Error');
+          return;
+        }
+        // 小数点位置の検出
+        let cleanDigits = this.calcInputStr.replace('-', '').replace('.', '');
+        if (cleanDigits.length > 8) cleanDigits = cleanDigits.slice(0, 8);
+        const paddedDigits = cleanDigits.padStart(8, '0');
+
+        // RAM 0x00..0x07 にBCDニブルとして格納
+        for (let i = 0; i < 8; i++) {
+          const digit = parseInt(paddedDigits[i], 10) || 0;
+          this.mcu.writeRam(i, digit);
+        }
+
+        // 表示用文字列作成（先頭の不要な0をスペースに）
+        let disp = this.calcInputStr;
+        let dpIdx = -1;
+        if (disp.includes('.')) {
+          const parts = disp.split('.');
+          const intPart = parts[0];
+          const decPart = parts[1];
+          const combined = (intPart + decPart).slice(0, 8);
+          disp = combined.padStart(8, ' ');
+          const dotPosFromRight = decPart.length;
+          if (dotPosFromRight > 0 && dotPosFromRight <= 8) {
+            dpIdx = 7 - dotPosFromRight;
+          }
+        } else {
+          disp = disp.slice(0, 8).padStart(8, ' ');
+        }
+        this.mcu.setDisplayString(disp, dpIdx);
+      }
+
+      handleCalcKey(key) {
+        if (key === 'AC') {
+          buzzer.playKey();
+          this.resetCalc();
+          return;
+        }
+        if (key === 'C') {
+          buzzer.playKey();
+          this.calcInputStr = '0';
+          this.calcNewInput = true;
+          this.calcError = false;
+          this.syncCalcDisplayToRam();
+          return;
+        }
+        if (this.calcError) {
+          buzzer.playMiss();
+          return;
+        }
+
+        // 数字キー 0-9
+        if (/^[0-9]$/.test(key)) {
+          buzzer.playKey();
+          const numVal = parseInt(key, 10);
+
+          // 4ビットマイコンの左シフト＆下位ニブル挿入マイクロ命令をキューに積む
+          this.mcu.enqueueOp(`LD   A, #0x${numVal}`, `入力キー '${key}' をAへロード`, m => m.setA(numVal), 'CALC: DIGIT SHIFT');
+          this.mcu.enqueueOp('SHL  W1, 1', 'W1バッファを左へ1ニブルシフト', m => {
+            for (let i = 0; i < 7; i++) {
+              m.writeRam(i, m.readRam(i + 1));
+            }
+            m.writeRam(7, m.A);
+          });
+
+          if (this.calcNewInput) {
+            this.calcInputStr = key;
+            this.calcNewInput = false;
+          } else {
+            const rawLen = this.calcInputStr.replace('-', '').replace('.', '').length;
+            if (rawLen < 8) {
+              this.calcInputStr = (this.calcInputStr === '0') ? key : this.calcInputStr + key;
+            }
+          }
+          this.syncCalcDisplayToRam();
+          return;
+        }
+
+        // 小数点
+        if (key === '.') {
+          buzzer.playKey();
+          if (this.calcNewInput) {
+            this.calcInputStr = '0.';
+            this.calcNewInput = false;
+          } else if (!this.calcInputStr.includes('.')) {
+            this.calcInputStr += '.';
+          }
+          this.syncCalcDisplayToRam();
+          return;
+        }
+
+        // 四則演算子 (+, -, *, /)
+        if (['+', '-', '*', '/'].includes(key)) {
+          buzzer.playKey();
+          if (this.calcOperator && !this.calcNewInput) {
+            this.executeBcdCalculation();
+          }
+          this.calcPrevValue = parseFloat(this.calcInputStr);
+          this.calcOperator = key;
+          this.calcNewInput = true;
+
+          const opMap = { '+': 1, '-': 2, '*': 3, '/': 4 };
+          const opCode = opMap[key];
+          // W1をW2へ転送する4ビットマイコン命令を生成
+          this.mcu.enqueueOp(`LD   A, #0x${opCode}`, `演算子(${key})コードセット`, m => {
+            m.setA(opCode);
+            m.writeRam(0x1F, opCode);
+          }, `CALC: OP (${key})`);
+          this.mcu.enqueueOp('MOV  W2, W1', '第1オペランドをW2へ退避', m => {
+            for (let i = 0; i < 8; i++) {
+              m.writeRam(8 + i, m.readRam(i));
+            }
+          });
+          return;
+        }
+
+        // イコール (=)
+        if (key === '=') {
+          buzzer.playKey();
+          if (this.calcOperator !== null && this.calcPrevValue !== null) {
+            this.executeBcdCalculation();
+            this.calcOperator = null;
+            this.calcNewInput = true;
+          }
+        }
+      }
+
+      // 4ビットBCD演算ルーチン（1桁ずつキャリー伝播しながら計算する様子をマイクロ命令化）
+      executeBcdCalculation() {
+        const currentVal = parseFloat(this.calcInputStr);
+        let result = 0;
+
+        if (this.calcOperator === '+') result = this.calcPrevValue + currentVal;
+        else if (this.calcOperator === '-') result = this.calcPrevValue - currentVal;
+        else if (this.calcOperator === '*') result = this.calcPrevValue * currentVal;
+        else if (this.calcOperator === '/') {
+          if (currentVal === 0) {
+            this.calcError = true;
+            buzzer.playMiss();
+            this.mcu.enqueueOp('ERR  DIV_ZERO', '0除算エラー検出', m => { m.C = 1; m.setA(0xE); }, 'CALC: ERROR');
+            this.syncCalcDisplayToRam();
+            return;
+          }
+          result = this.calcPrevValue / currentVal;
+        }
+
+        // 浮動小数点誤差丸め
+        result = Math.round(result * 10000000) / 10000000;
+
+        // オーバーフローチェック（8桁制限）
+        if (Math.abs(result) >= 100000000) {
+          this.calcError = true;
+          buzzer.playMiss();
+          this.mcu.enqueueOp('ERR  OVF_8DIG', '8桁オーバーフロー検出', m => { m.C = 1; m.setA(0xF); }, 'CALC: OVERFLOW');
+          this.syncCalcDisplayToRam();
+          return;
+        }
+
+        // 下位桁から上位桁へ1ニブルずつBCD加算/演算ループを4ビットCPUに実行させる
+        this.mcu.enqueueOp('CLR  C', 'キャリーフラグ初期化', m => { m.C = 0; }, 'CALC: BCD ALU LOOP');
+        for (let d = 7; d >= 0; d--) {
+          const addr1 = d;
+          const addr2 = 8 + d;
+          const addrRes = 16 + d;
+          this.mcu.enqueueOp(`ADC  [0x0${d}], [0x0${8 + d}]`, `桁${7 - d}の4bit BCD演算 & DAA補正`, m => {
+            m.setX(d);
+            const n1 = m.readRam(addr1);
+            const n2 = m.readRam(addr2);
+            let sum = n1 + n2 + m.C;
+            if (sum >= 10) {
+              sum = (sum - 10) & 0x0F;
+              m.C = 1;
+            } else {
+              m.C = 0;
+            }
+            m.setA(sum);
+            m.writeRam(addrRes, sum);
+          });
+        }
+
+        // フォーマットして表示更新
+        let resStr = result.toString();
+        if (resStr.length > 9 || (resStr.includes('.') && resStr.length > 9)) {
+          resStr = resStr.slice(0, 9);
+          if (resStr.endsWith('.')) resStr = resStr.slice(0, -1);
+        }
+        this.calcInputStr = resStr;
+        this.calcPrevValue = result;
+        this.syncCalcDisplayToRam();
+      }
+
+      // ========================================================================
+      // GAME (MG-880風 デジタルインベーダー) モードロジック
+      // ========================================================================
+      initGame() {
+        this.stopGameLoop();
+
+        // ゲーム用RAM初期化
+        // 0x08: 照準表示スロット, 0x09..0x0F: インベーダーレーン7マス (0xF = 空白)
+        for (let i = 0x08; i <= 0x0F; i++) {
+          this.mcu.writeRam(i, 0xF);
+        }
+        // スコア 8桁 (0x10..0x17) クリア
+        for (let i = 0x10; i <= 0x17; i++) {
+          this.mcu.writeRam(i, 0);
+        }
+
+        this.mcu.writeRam(0x18, 0); // 照準 AIM = 0
+        this.mcu.writeRam(0x19, 3); // 残機 LIFE = 3
+        this.mcu.writeRam(0x1A, 0); // 撃破合計 mod 10 (UFO出現トリガー)
+        this.mcu.writeRam(0x1B, 1); // ステージ = 1
+        this.mcu.writeRam(0x1D, 0); // 撃破数カウンタ
+        this.mcu.writeRam(0x1E, 1); // STATUS = 1 (PLAYING)
+
+        this.mcu.enqueueOp('LD   A, #0x3', '残機(3)をRAM[0x19]へ設定', m => {
+          m.setA(3);
+          m.writeRam(0x19, 3);
+        }, 'GAME: INIT INVADER');
+
+        this.renderGameScreen();
+        this.startGameLoop();
+      }
+
+      startGameLoop() {
+        this.stopGameLoop();
+        const level = this.mcu.readRam(0x1B) || 1;
+        this.gameTickMs = Math.max(320, 820 - (level - 1) * 70);
+        this.gameTimer = setInterval(() => this.gameTick(), this.gameTickMs);
+      }
+
+      stopGameLoop() {
+        if (this.gameTimer) {
+          clearInterval(this.gameTimer);
+          this.gameTimer = null;
+        }
+      }
+
+      // 4ビット LFSR 擬似乱数生成 (0〜9)
+      nextRandomDigit() {
+        let lfsr = this.mcu.readRam(0x1C) || 0x9;
+        const bit = ((lfsr >> 0) ^ (lfsr >> 1)) & 1;
+        lfsr = ((lfsr >> 1) | (bit << 3)) & 0x0F;
+        if (lfsr === 0) lfsr = 0xA;
+        this.mcu.writeRam(0x1C, lfsr);
+        return lfsr % 10;
+      }
+
+      // 1ティックごとに右端からインベーダーが左へ前進する処理
+      gameTick() {
+        if (this.mode !== 'GAME') return;
+        const status = this.mcu.readRam(0x1E);
+        if (status !== 1) return; // プレイ中以外は停止
+
+        // 左端(0x09)に敵がいる状態で前進すると防衛線突破（ミス！）
+        const frontEnemy = this.mcu.readRam(0x09);
+        if (frontEnemy !== 0xF) {
+          this.handlePlayerMiss();
+          return;
+        }
+
+        // 4ビットマイコンによるレーン左シフト命令キュー
+        this.mcu.enqueueOp('LD   X, #0x9', 'レーン先頭ポインタセット', m => m.setX(0x9), 'GAME: MARCH SHIFT');
+        for (let addr = 0x09; addr <= 0x0E; addr++) {
+          const val = this.mcu.readRam(addr + 1);
+          this.mcu.writeRam(addr, val);
+          this.mcu.enqueueOp(`MOV  [0x0${addr.toString(16)}], [0x0${(addr + 1).toString(16)}]`, `敵データ左シフト`, m => {
+            m.setA(val);
+          });
+        }
+
+        // 右端(0x0F)に新しい敵を出現させる（UFOフラグが立っていればUFO '0xA' を出現）
+        const ufoPending = this.mcu.readRam(0x1A) === 0xA;
+        let newEnemy = 0xF;
+        if (ufoPending) {
+          newEnemy = 0xA; // 0xA = UFO ('n')
+          this.mcu.writeRam(0x1A, 0);
+        } else {
+          // 一定確率で数字(0-9)出現
+          if (Math.random() < 0.72) {
+            newEnemy = this.nextRandomDigit();
+          }
+        }
+        this.mcu.writeRam(0x0F, newEnemy);
+        this.mcu.enqueueOp(`ST   [0x0F], #0x${newEnemy.toString(16).toUpperCase()}`, newEnemy === 0xA ? 'UFO出現！' : '新規インベーダー配置', m => {
+          m.setA(newEnemy);
+        });
+
+        buzzer.beep(550, 0.015, 'square', 0.025);
+        this.renderGameScreen();
+      }
+
+      handlePlayerMiss() {
+        buzzer.playMiss();
+        let life = this.mcu.readRam(0x19);
+        life = Math.max(0, life - 1);
+        this.mcu.writeRam(0x19, life);
+
+        // レーンクリア
+        for (let i = 0x09; i <= 0x0F; i++) {
+          this.mcu.writeRam(i, 0xF);
+        }
+
+        this.mcu.enqueueOp('DEC  [0x19]', '防衛線突破！残機デクリメント', m => {
+          m.setA(life);
+        }, 'GAME: BREACH!');
+
+        if (life === 0) {
+          this.mcu.writeRam(0x1E, 2); // GAME OVER
+          this.stopGameLoop();
+          buzzer.playGameOver();
+          this.showGameScore();
+        } else {
+          this.renderGameScreen();
+        }
+      }
+
+      // 照準数字インクリメント (0 -> 1 -> ... -> 9 -> 0)
+      aimNext() {
+        if (this.mcu.readRam(0x1E) !== 1) return;
+        buzzer.playAim();
+        let aim = (this.mcu.readRam(0x18) + 1) % 10;
+        this.mcu.writeRam(0x18, aim);
+
+        this.mcu.enqueueOp('INC  [0x18]', `照準数字インクリメント -> ${aim}`, m => {
+          m.setA(aim);
+        }, 'GAME: AIM CHANGE');
+
+        this.renderGameScreen();
+      }
+
+      // ビーム発射！先頭（最も左にいる）インベーダーと照準を比較
+      fireBeam() {
+        const status = this.mcu.readRam(0x1E);
+        if (status === 2) {
+          // ゲームオーバー中はリスタート
+          this.initGame();
+          return;
+        }
+        if (status !== 1) return;
+
+        const aim = this.mcu.readRam(0x18);
+        // 最も左（0x09側）にいるインベーダーを探す
+        let targetAddr = -1;
+        let targetVal = 0xF;
+        for (let addr = 0x09; addr <= 0x0F; addr++) {
+          const v = this.mcu.readRam(addr);
+          if (v !== 0xF) {
+            targetAddr = addr;
+            targetVal = v;
+            break;
+          }
+        }
+
+        this.mcu.enqueueOp(`LD   A, [0x18]`, `照準値(${aim})ロード`, m => m.setA(aim), 'GAME: FIRE & COMPARE');
+
+        if (targetAddr === -1) {
+          buzzer.playShoot();
+          return;
+        }
+
+        // 一致判定（照準 == 敵数字、または UFO(0xA) の場合はどの数字でも撃破可能！）
+        const isHit = (targetVal === 0xA) || (aim === targetVal);
+
+        this.mcu.enqueueOp(`CMP  A, [0x0${targetAddr.toString(16)}]`, `照準(${aim})と先頭敵(${targetVal === 0xA ? 'UFO' : targetVal})比較`, m => {
+          m.setA(isHit ? 0 : 1);
+        });
+
+        if (isHit) {
+          // 撃破成功！
+          this.mcu.writeRam(targetAddr, 0xF); // 敵消去
+
+          // スコア加算 (距離が遠いほど高得点、UFOは300点)
+          const distanceBonus = (targetAddr - 0x08) * 10;
+          const pts = (targetVal === 0xA) ? 300 : distanceBonus;
+          this.addGameScore(pts);
+
+          // 撃破数カウント＆レベルアップ判定
+          let kills = (this.mcu.readRam(0x1D) + 1) & 0x0F;
+          this.mcu.writeRam(0x1D, kills);
+          if (kills % 10 === 0) {
+            let lv = Math.min(9, (this.mcu.readRam(0x1B) || 1) + 1);
+            this.mcu.writeRam(0x1B, lv);
+            this.startGameLoop();
+          }
+
+          // MG-880名物：倒した数字の合計が10の倍数になると次回UFO出現！
+          if (targetVal !== 0xA) {
+            buzzer.playHit();
+            let acc = this.mcu.readRam(0x1A);
+            if (acc !== 0xA) {
+              acc = (acc + targetVal) % 10;
+              if (acc === 0) {
+                // 合計が10の倍数達成！UFO出現フラグ(0xA)セット
+                this.mcu.writeRam(0x1A, 0xA);
+                this.mcu.enqueueOp('LD   [0x1A], #0xA', '合計10の倍数達成！UFO召喚フラグON', m => m.setA(0xA));
+              } else {
+                this.mcu.writeRam(0x1A, acc);
+              }
+            }
+          } else {
+            buzzer.playUfoHit();
+          }
+
+          // 一瞬撃破エフェクト('u')を表示してから通常画面へ
+          this.renderGameScreen(targetAddr - 0x08, 'u');
+          clearTimeout(this.beamEffectTimer);
+          this.beamEffectTimer = setTimeout(() => {
+            if (this.mode === 'GAME') this.renderGameScreen();
+          }, 120);
+        } else {
+          // ミスショット（照準と不一致）
+          buzzer.playShoot();
+        }
+      }
+
+      // 8桁BCDスコア加算 (RAM 0x10..0x17)
+      addGameScore(points) {
+        let currentScore = 0;
+        for (let i = 0; i < 8; i++) {
+          currentScore = currentScore * 10 + this.mcu.readRam(0x10 + i);
+        }
+        currentScore = Math.min(99999999, currentScore + points);
+        const sStr = currentScore.toString().padStart(8, '0');
+        for (let i = 0; i < 8; i++) {
+          const d = parseInt(sStr[i], 10);
+          this.mcu.writeRam(0x10 + i, d);
+        }
+      }
+
+      // ゲーム画面を8桁LCDへ描画
+      // 桁0: 照準(0-9), 桁1..7: レーン上のインベーダー(0-9 / UFO='n' / 空白=' ')
+      renderGameScreen(effectCol = -1, effectChar = ' ') {
+        const aim = this.mcu.readRam(0x18);
+        let chars = [aim.toString()];
+
+        for (let col = 1; col <= 7; col++) {
+          if (col === effectCol) {
+            chars.push(effectChar);
+            continue;
+          }
+          const v = this.mcu.readRam(0x08 + col);
+          if (v === 0xF) chars.push(' ');
+          else if (v === 0xA) chars.push('n'); // UFO
+          else chars.push(v.toString());
+        }
+
+        // RAM W1(0x00..0x07)にも表示用イメージをミラーリング
+        for (let i = 0; i < 8; i++) {
+          const c = chars[i];
+          const nibble = c === ' ' ? 0xF : (c === 'n' ? 0xA : (parseInt(c, 10) || 0));
+          this.mcu.writeRam(i, nibble);
+        }
+
+        // 照準桁(桁0)に小数点ドットを点灯させて自機砲台らしさを演出
+        this.mcu.setDisplayString(chars.join(''), 0);
+      }
+
+      showGameScore() {
+        let scoreStr = '';
+        for (let i = 0; i < 8; i++) {
+          scoreStr += this.mcu.readRam(0x10 + i).toString();
+        }
+        const trimmed = parseInt(scoreStr, 10).toString().padStart(8, ' ');
+        this.mcu.setDisplayString(trimmed, -1);
+      }
+
+      handleGameKey(key) {
+        if (key === 'AC') {
+          buzzer.playKey();
+          this.initGame();
+          return;
+        }
+        if (key === 'SCORE') {
+          buzzer.playKey();
+          this.showGameScore();
+          setTimeout(() => {
+            if (this.mode === 'GAME' && this.mcu.readRam(0x1E) === 1) {
+              this.renderGameScreen();
+            }
+          }, 1200);
+          return;
+        }
+        // '+' または '.' で照準変更
+        if (key === '+' || key === '.') {
+          this.aimNext();
+          return;
+        }
+        // '=' でビーム発射
+        if (key === '=') {
+          this.fireBeam();
+          return;
+        }
+        // 数字キー 0〜9 を直接押して照準を即座に合わせるショートカット操作も対応！
+        if (/^[0-9]$/.test(key)) {
+          if (this.mcu.readRam(0x1E) !== 1) return;
+          buzzer.playAim();
+          const num = parseInt(key, 10);
+          this.mcu.writeRam(0x18, num);
+          this.mcu.enqueueOp(`LD   [0x18], #0x${num}`, `ダイレクト照準セット -> ${num}`, m => m.setA(num), 'GAME: DIRECT AIM');
+          this.renderGameScreen();
+          return;
+        }
+      }
+
+      // モード切替
+      setMode(newMode) {
+        if (this.mode === newMode) return;
+        buzzer.playKey();
+        this.mode = newMode;
+        if (this.mode === 'CALC') {
+          this.stopGameLoop();
+          this.resetCalc();
+        } else {
+          this.initGame();
+        }
+      }
+
+      // キー入力総合ディスパッチャ
+      pressKey(key) {
+        if (this.mode === 'CALC') {
+          this.handleCalcKey(key);
+        } else {
+          this.handleGameKey(key);
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 5. UIレンダリング＆エミュレーションループ制御
+     * ============================================================================
+     */
+    const app = new GameCalculatorApp();
+
+    // RAM & VRAM モニターDOMの初期構築
+    function initMonitorGrids() {
+      const ramGrid = document.getElementById('ram-grid');
+      ramGrid.innerHTML = '';
+      for (let i = 0; i < 32; i++) {
+        const addrHex = i.toString(16).toUpperCase().padStart(2, '0');
+        let colorClass = 'text-amber-300';
+        if (i >= 8 && i < 16) colorClass = 'text-sky-300';
+        else if (i >= 16 && i < 24) colorClass = 'text-purple-300';
+        else if (i >= 24) colorClass = 'text-emerald-300';
+
+        const cell = document.createElement('div');
+        cell.id = `ram-cell-${i}`;
+        cell.className = 'bg-black/60 border border-zinc-800 rounded p-1 flex flex-col items-center';
+        cell.innerHTML = `
+          <span class="text-[9px] text-zinc-500">${addrHex}</span>
+          <span id="ram-val-${i}" class="font-bold ${colorClass}">0</span>
+        `;
+        ramGrid.appendChild(cell);
+      }
+
+      const vramGrid = document.getElementById('vram-grid');
+      vramGrid.innerHTML = '';
+      for (let i = 0; i < 8; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'bg-black/60 border border-zinc-800 rounded p-1 flex flex-col items-center';
+        cell.innerHTML = `
+          <span class="text-[9px] text-zinc-500">DIG${i}</span>
+          <span id="vram-char-${i}" class="font-bold text-amber-400">_</span>
+          <span id="vram-hex-${i}" class="text-[9px] text-zinc-400">0x00</span>
+        `;
+        vramGrid.appendChild(cell);
+      }
+    }
+
+    // 画面全体のUI同期（LCDセグメント + マイコン内部レジスタ/RAM/命令表示）
+    function renderUI() {
+      const mcu = app.mcu;
+
+      // 1. 8桁 7セグメントLCD更新
+      for (let i = 0; i < 8; i++) {
+        const mask = mcu.vram[i];
+        for (let seg = 0; seg < 8; seg++) {
+          const el = document.getElementById(`d${i}-seg${seg}`);
+          if (el) {
+            const isOn = (mask & (1 << seg)) !== 0;
+            el.setAttribute('class', isOn ? 'seg-on' : 'seg-off');
+          }
+        }
+      }
+
+      // 2. LCD上部インジケーター更新
+      document.getElementById('lcd-ind-calc').style.opacity = app.mode === 'CALC' ? '1' : '0.15';
+      document.getElementById('lcd-ind-game').style.opacity = app.mode === 'GAME' ? '1' : '0.15';
+      document.getElementById('lcd-ind-err').style.opacity = (app.mode === 'CALC' && app.calcError) ? '1' : '0.1';
+
+      const opEl = document.getElementById('lcd-ind-op');
+      const lifeEl = document.getElementById('lcd-ind-life');
+      if (app.mode === 'CALC') {
+        const opSymbols = { '+': '+', '-': '-', '*': '×', '/': '÷' };
+        opEl.textContent = app.calcOperator ? opSymbols[app.calcOperator] : '';
+        lifeEl.textContent = '';
+      } else {
+        opEl.textContent = 'LV' + (mcu.readRam(0x1B) || 1);
+        const life = mcu.readRam(0x19);
+        const status = mcu.readRam(0x1E);
+        if (status === 2) {
+          lifeEl.textContent = 'GAME OVER';
+        } else {
+          lifeEl.textContent = '▲'.repeat(life) + '△'.repeat(Math.max(0, 3 - life));
+        }
+      }
+
+      // 3. スライドスイッチUI更新
+      const knob = document.getElementById('mode-switch-knob');
+      const lblCalc = document.getElementById('label-mode-calc');
+      const lblGame = document.getElementById('label-mode-game');
+      if (app.mode === 'CALC') {
+        knob.style.transform = 'translateX(0px)';
+        lblCalc.className = 'text-xs font-extrabold text-zinc-900 cursor-pointer';
+        lblGame.className = 'text-xs font-bold text-zinc-500 cursor-pointer';
+      } else {
+        knob.style.transform = 'translateX(24px)';
+        lblCalc.className = 'text-xs font-bold text-zinc-500 cursor-pointer';
+        lblGame.className = 'text-xs font-extrabold text-sky-800 cursor-pointer';
+      }
+
+      // 4. CPUレジスタ・フラグ更新
+      document.getElementById('reg-a-hex').textContent = '0x' + mcu.A.toString(16).toUpperCase();
+      document.getElementById('reg-a-dec').textContent = `(${mcu.A})`;
+      document.getElementById('reg-a-bin').textContent = mcu.A.toString(2).padStart(4, '0');
+
+      document.getElementById('reg-x-hex').textContent = '0x' + mcu.X.toString(16).toUpperCase();
+      document.getElementById('reg-x-dec').textContent = `(${mcu.X})`;
+      document.getElementById('reg-x-bin').textContent = mcu.X.toString(2).padStart(4, '0');
+
+      document.getElementById('reg-y-hex').textContent = '0x' + mcu.Y.toString(16).toUpperCase();
+      document.getElementById('reg-y-dec').textContent = `(${mcu.Y})`;
+      document.getElementById('reg-y-bin').textContent = mcu.Y.toString(2).padStart(4, '0');
+
+      const flagCEl = document.getElementById('flag-c');
+      flagCEl.textContent = mcu.C;
+      flagCEl.className = mcu.C
+        ? 'text-sm font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-400'
+        : 'text-sm font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400';
+
+      const flagZEl = document.getElementById('flag-z');
+      flagZEl.textContent = mcu.Z;
+      flagZEl.className = mcu.Z
+        ? 'text-sm font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400'
+        : 'text-sm font-bold px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400';
+
+      document.getElementById('reg-pc').textContent = 'PC: 0x' + mcu.PC.toString(16).toUpperCase().padStart(2, '0');
+      document.getElementById('cpu-cycles').textContent = `Step: ${mcu.cycles}`;
+
+      // 5. アセンブリ命令パイプライン更新
+      document.getElementById('cpu-task-badge').textContent = mcu.currentTaskName;
+      document.getElementById('asm-prev').textContent = '  ' + mcu.historyAsm[0];
+      document.getElementById('asm-curr').innerHTML = `<span>▶</span> <span>${mcu.historyAsm[1]}</span>`;
+      document.getElementById('asm-next').textContent = '  ' + mcu.historyAsm[2];
+
+      // 6. 32ニブル RAM ダンプ更新
+      for (let i = 0; i < 32; i++) {
+        const val = mcu.ram[i];
+        const valEl = document.getElementById(`ram-val-${i}`);
+        valEl.textContent = val.toString(16).toUpperCase();
+
+        if (mcu.ramModified[i]) {
+          mcu.ramModified[i] = 0;
+          const cellEl = document.getElementById(`ram-cell-${i}`);
+          cellEl.classList.remove('nibble-updated');
+          void cellEl.offsetWidth; // リフロー強制でアニメーション再発火
+          cellEl.classList.add('nibble-updated');
+        }
+      }
+
+      // 7. VRAM 8桁モニター更新
+      for (let i = 0; i < 8; i++) {
+        const ch = mcu.vramChars[i];
+        document.getElementById(`vram-char-${i}`).textContent = ch === ' ' ? '␣' : ch;
+        document.getElementById(`vram-hex-${i}`).textContent = '0x' + mcu.vram[i].toString(16).toUpperCase().padStart(2, '0');
+      }
+    }
+
+    // CPUクロック駆動ループ
+    let cpuTimer = null;
+    function startCpuClock() {
+      if (cpuTimer) clearInterval(cpuTimer);
+
+      const speed = app.mcu.speedMode;
+      const intervalMs = speed === 'slow' ? 250 : (speed === 'normal' ? 35 : 16);
+
+      cpuTimer = setInterval(() => {
+        if (!app.mcu.isRunning) return;
+
+        if (speed === 'fast') {
+          // 高速モードは1フレームでキュー内の命令をまとめて消化
+          const steps = Math.max(1, Math.min(8, app.mcu.instructionQueue.length));
+          for (let s = 0; s < steps; s++) {
+            app.mcu.step();
+          }
+        } else {
+          app.mcu.step();
+          if (speed === 'slow' && app.mcu.instructionQueue.length > 0) {
+            buzzer.playStep();
+          }
+        }
+        renderUI();
+      }, intervalMs);
+    }
+
+    // イベントリスナー登録
+    window.addEventListener('DOMContentLoaded', () => {
+      initLcdSvg();
+      initMonitorGrids();
+      renderUI();
+      startCpuClock();
+
+      // 電卓ボタンクリック/タッチ対応
+      document.querySelectorAll('.calc-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-key');
+          app.pressKey(key);
+          renderUI();
+        });
+      });
+
+      // PCキーボード入力対応
+      window.addEventListener('keydown', (e) => {
+        let mappedKey = null;
+        if (/^[0-9]$/.test(e.key)) mappedKey = e.key;
+        else if (e.key === '+' || e.key === 'ArrowUp' || e.key === ' ') mappedKey = '+';
+        else if (e.key === '-') mappedKey = '-';
+        else if (e.key === '*') mappedKey = '*';
+        else if (e.key === '/') { e.preventDefault(); mappedKey = '/'; }
+        else if (e.key === 'Enter' || e.key === '=') { e.preventDefault(); mappedKey = '='; }
+        else if (e.key === '.') mappedKey = '.';
+        else if (e.key === 'Escape') mappedKey = 'AC';
+        else if (e.key === 'Backspace' || e.key === 'Delete') mappedKey = 'C';
+
+        if (mappedKey) {
+          const btnEl = document.querySelector(`.calc-btn[data-key="${mappedKey}"]`);
+          if (btnEl) {
+            btnEl.classList.add('pressed');
+            setTimeout(() => btnEl.classList.remove('pressed'), 100);
+          }
+          app.pressKey(mappedKey);
+          renderUI();
+        }
+      });
+
+      // モード切替スイッチ
+      document.getElementById('mode-switch-btn').addEventListener('click', () => {
+        app.setMode(app.mode === 'CALC' ? 'GAME' : 'CALC');
+        renderUI();
+      });
+      document.getElementById('label-mode-calc').addEventListener('click', () => {
+        app.setMode('CALC');
+        renderUI();
+      });
+      document.getElementById('label-mode-game').addEventListener('click', () => {
+        app.setMode('GAME');
+        renderUI();
+      });
+
+      // サウンドON/OFF切替
+      document.getElementById('btn-sound-toggle').addEventListener('click', () => {
+        buzzer.enabled = !buzzer.enabled;
+        document.getElementById('sound-icon').textContent = buzzer.enabled ? '🔊' : '🔇';
+        document.getElementById('sound-label').textContent = `圧電ブザー: ${buzzer.enabled ? 'ON' : 'OFF'}`;
+        if (buzzer.enabled) buzzer.playKey();
+      });
+
+      // CPU実行/停止トグル
+      const btnRun = document.getElementById('btn-cpu-run');
+      btnRun.addEventListener('click', () => {
+        app.mcu.isRunning = !app.mcu.isRunning;
+        if (app.mcu.isRunning) {
+          btnRun.textContent = '▶ 自動実行中';
+          btnRun.className = 'px-2.5 py-1 rounded text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition';
+        } else {
+          btnRun.textContent = '⏸ 一時停止中';
+          btnRun.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white transition';
+        }
+      });
+
+      // CPU 1ステップ手動実行
+      document.getElementById('btn-cpu-step').addEventListener('click', () => {
+        app.mcu.isRunning = false;
+        btnRun.textContent = '⏸ 一時停止中';
+        btnRun.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white transition';
+        app.mcu.step();
+        buzzer.playStep();
+        renderUI();
+      });
+
+      // CPUクロック速度変更
+      document.getElementById('cpu-speed-select').addEventListener('change', (e) => {
+        app.mcu.speedMode = e.target.value;
+        startCpuClock();
+      });
+    });
+  </script>
+</body>
+</html>

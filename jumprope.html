@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>なわとび - モダン大縄跳びゲーム</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: 丸みのあるモダンな日本語フォントと英数字フォント -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800;900&family=M+PLUS+Rounded+1c:wght@500;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* 全体のフォントとタッチ操作の最適化 */
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'M PLUS Rounded 1c', 'Inter', sans-serif;
+      background: linear-gradient(180deg, #38bdf8 0%, #bae6fd 65%, #86efac 100%);
+      touch-action: manipulation;
+    }
+
+    /* ゲームコンテナ */
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* キャンバス本体 */
+    canvas#gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    /* グラスモーフィズム風のHUDカード */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 0 8px 24px rgba(14, 116, 144, 0.12);
+    }
+
+    /* ポップなゲームボタン */
+    .btn-primary {
+      background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+      color: #ffffff;
+      box-shadow: 0 6px 0 #1d4ed8, 0 12px 24px rgba(37, 99, 235, 0.35);
+      transition: transform 0.1s ease, box-shadow 0.1s ease, filter 0.15s ease;
+    }
+    .btn-primary:hover {
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+      box-shadow: 0 7px 0 #1d4ed8, 0 14px 28px rgba(37, 99, 235, 0.4);
+    }
+    .btn-primary:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #1d4ed8, 0 4px 10px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-jump {
+      background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+      color: #ffffff;
+      box-shadow: 0 6px 0 #c2410c, 0 10px 22px rgba(234, 88, 12, 0.35);
+      transition: transform 0.08s ease, box-shadow 0.08s ease;
+    }
+    .btn-jump:active, .btn-jump.pressed {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #c2410c, 0 4px 10px rgba(234, 88, 12, 0.3);
+    }
+
+    /* リズム変化予告バナーのアニメーション */
+    @keyframes bannerPop {
+      0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
+      18% { transform: translate(-50%, 0) scale(1.06); opacity: 1; }
+      28% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -14px) scale(0.95); opacity: 0; }
+    }
+    .banner-animate {
+      animation: bannerPop 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    /* コンボバッジのポップアニメーション */
+    @keyframes comboPop {
+      0% { transform: scale(0.75); }
+      50% { transform: scale(1.22); }
+      100% { transform: scale(1); }
+    }
+    .combo-pop {
+      animation: comboPop 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* モーダル出現アニメーション */
+    @keyframes modalIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(14px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-animate {
+      animation: modalIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-wrapper">
+    <!-- メインゲームキャンバス -->
+    <canvas id="gameCanvas" aria-label="なわとびゲーム画面"></canvas>
+
+    <!-- 上部HUD（スコア・ベスト・サウンドボタン） -->
+    <header class="pointer-events-none fixed top-0 left-0 right-0 z-20 flex items-start justify-between p-3 sm:p-5 max-w-5xl mx-auto">
+      <!-- 左側：スコア & ベスト -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="glass-card rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-2.5">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center font-black text-base sm:text-lg">
+            🏃
+          </div>
+          <div>
+            <div class="text-[10px] sm:text-xs font-bold text-slate-500 leading-none tracking-wider">スコア</div>
+            <div id="scoreDisplay" class="text-xl sm:text-2xl font-black text-slate-800 leading-tight tabular-nums">0</div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-2">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-100 text-amber-500 flex items-center justify-center font-black text-base sm:text-lg">
+            👑
+          </div>
+          <div>
+            <div class="text-[10px] sm:text-xs font-bold text-slate-500 leading-none tracking-wider">ベスト</div>
+            <div id="bestDisplay" class="text-xl sm:text-2xl font-black text-amber-600 leading-tight tabular-nums">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右側：コンボ表示 & ミュートボタン -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- コンボ表示（2コンボ以上で表示） -->
+        <div id="comboContainer" class="hidden glass-card rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 border-orange-200 bg-orange-50/90">
+          <div class="text-[10px] sm:text-xs font-extrabold text-orange-500 leading-none">COMBO</div>
+          <div id="comboDisplay" class="text-xl sm:text-2xl font-black text-orange-600 leading-tight tabular-nums text-center">0</div>
+        </div>
+
+        <!-- ミュート切り替えボタン -->
+        <button
+          id="muteBtn"
+          type="button"
+          aria-label="サウンドON/OFF"
+          title="サウンドON/OFF"
+          class="pointer-events-auto glass-card w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-slate-700 hover:bg-white active:scale-95 transition"
+        >
+          <!-- サウンドONアイコン -->
+          <svg id="iconSoundOn" class="w-6 h-6 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14" />
+          </svg>
+          <!-- サウンドOFFアイコン -->
+          <svg id="iconSoundOff" class="hidden w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H3v6h3l5 4V5z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M23 9l-6 6M17 9l6 6" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- リズム変化の事前予告バナー -->
+    <div id="rhythmBanner" class="pointer-events-none fixed top-20 sm:top-24 left-1/2 -translate-x-1/2 z-20 hidden">
+      <div id="rhythmBannerInner" class="px-5 py-2 sm:px-7 sm:py-2.5 rounded-full font-black text-sm sm:text-lg tracking-wide shadow-lg border-2 border-white flex items-center gap-2 whitespace-nowrap">
+        <span id="rhythmIcon">⚡</span>
+        <span id="rhythmText">スピードアップ！</span>
+      </div>
+    </div>
+
+    <!-- タイトルオーバーレイ -->
+    <div id="titleOverlay" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-sky-900/15 backdrop-blur-[2px]">
+      <div class="modal-animate glass-card rounded-3xl p-6 sm:p-9 max-w-md w-full text-center">
+        <div class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-sky-100 text-sky-700 text-xs font-extrabold tracking-wider mb-3">
+          <span>☀️</span> 大縄跳びアクション
+        </div>
+        <h1 class="text-4xl sm:text-5xl font-black text-slate-800 tracking-tight mb-2">
+          なわとび
+        </h1>
+        <p class="text-sm sm:text-base font-bold text-slate-500 mb-6">
+          縄が足元を通る瞬間にジャンプしよう！<br />
+          リズム変化に合わせてハイスコアを目指せ！
+        </p>
+
+        <button
+          id="startBtn"
+          type="button"
+          class="btn-primary w-full py-4 rounded-2xl text-lg sm:text-xl font-black tracking-wide mb-4 cursor-pointer"
+        >
+          スタート！
+        </button>
+
+        <div class="flex items-center justify-center gap-2 text-xs sm:text-sm font-bold text-slate-500 bg-slate-100/80 rounded-xl py-2.5 px-4">
+          <span class="px-2 py-0.5 bg-white rounded-md border border-slate-200 text-slate-700 text-xs font-extrabold shadow-sm">SPACE</span>
+          <span>/</span>
+          <span class="px-2 py-0.5 bg-white rounded-md border border-slate-200 text-slate-700 text-xs font-extrabold shadow-sm">↑</span>
+          <span>/</span>
+          <span>クリック・タップでジャンプ</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ゲームオーバーオーバーレイ -->
+    <div id="gameOverOverlay" class="hidden fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-900/25 backdrop-blur-[3px]">
+      <div class="modal-animate glass-card rounded-3xl p-6 sm:p-8 max-w-md w-full text-center">
+        <div id="newRecordBadge" class="hidden inline-flex items-center gap-1 px-3.5 py-1 rounded-full bg-amber-100 text-amber-600 text-xs font-black tracking-wider mb-2">
+          ✨ NEW RECORD! ✨
+        </div>
+        <h2 class="text-3xl sm:text-4xl font-black text-slate-800 mb-1">
+          ひっかかった！
+        </h2>
+        <p id="resultComment" class="text-sm font-bold text-slate-500 mb-5">
+          おしい！もう一回チャレンジしよう！
+        </p>
+
+        <!-- リザルトカード -->
+        <div class="grid grid-cols-3 gap-2.5 mb-6">
+          <div class="bg-sky-50/90 border border-sky-100 rounded-2xl p-3">
+            <div class="text-[11px] font-bold text-sky-600 mb-0.5">スコア</div>
+            <div id="finalScore" class="text-2xl sm:text-3xl font-black text-slate-800 tabular-nums">0</div>
+          </div>
+          <div class="bg-amber-50/90 border border-amber-100 rounded-2xl p-3">
+            <div class="text-[11px] font-bold text-amber-600 mb-0.5">ベスト</div>
+            <div id="finalBest" class="text-2xl sm:text-3xl font-black text-amber-600 tabular-nums">0</div>
+          </div>
+          <div class="bg-orange-50/90 border border-orange-100 rounded-2xl p-3">
+            <div class="text-[11px] font-bold text-orange-600 mb-0.5">最大コンボ</div>
+            <div id="finalMaxCombo" class="text-2xl sm:text-3xl font-black text-orange-600 tabular-nums">0</div>
+          </div>
+        </div>
+
+        <button
+          id="retryBtn"
+          type="button"
+          class="btn-primary w-full py-4 rounded-2xl text-lg sm:text-xl font-black tracking-wide mb-3 cursor-pointer"
+        >
+          もういちど遊ぶ
+        </button>
+        <div class="text-xs font-bold text-slate-400">
+          スペースキーまたはボタンで即リトライ
+        </div>
+      </div>
+    </div>
+
+    <!-- 下部操作エリア（プレイ中のガイド & タップ用ジャンプボタン） -->
+    <div id="bottomControls" class="hidden pointer-events-none fixed bottom-4 sm:bottom-6 left-0 right-0 z-20 flex flex-col items-center gap-2 px-4">
+      <button
+        id="jumpBtn"
+        type="button"
+        class="pointer-events-auto btn-jump px-10 py-3.5 sm:px-12 sm:py-4 rounded-full font-black text-base sm:text-lg tracking-wider flex items-center gap-2 cursor-pointer"
+      >
+        <span>⬆️</span>
+        <span>ジャンプ！</span>
+      </button>
+      <div class="hidden sm:block text-xs font-bold text-white/95 drop-shadow">
+        スペースキー / 上矢印キー / 画面クリックでジャンプ
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * =========================================================================
+     * モダン大縄跳びゲーム「なわとび」
+     * - HTML5 Canvas ベクター風フラットデザイン
+     * - 3D奥行き描画（後ろ/前のレイヤー切り替え + 地面の影）
+     * - Web Audio API による外部音源不要のサウンド生成
+     * - タイミング判定（PERFECT / GOOD）、コンボ、リズム変化イベント
+     * =========================================================================
+     */
+
+    (() => {
+      'use strict';
+
+      // -----------------------------------------------------------------------
+      // DOM要素の取得
+      // -----------------------------------------------------------------------
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const scoreDisplay = document.getElementById('scoreDisplay');
+      const bestDisplay = document.getElementById('bestDisplay');
+      const comboContainer = document.getElementById('comboContainer');
+      const comboDisplay = document.getElementById('comboDisplay');
+
+      const titleOverlay = document.getElementById('titleOverlay');
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const bottomControls = document.getElementById('bottomControls');
+
+      const startBtn = document.getElementById('startBtn');
+      const retryBtn = document.getElementById('retryBtn');
+      const jumpBtn = document.getElementById('jumpBtn');
+      const muteBtn = document.getElementById('muteBtn');
+      const iconSoundOn = document.getElementById('iconSoundOn');
+      const iconSoundOff = document.getElementById('iconSoundOff');
+
+      const finalScoreEl = document.getElementById('finalScore');
+      const finalBestEl = document.getElementById('finalBest');
+      const finalMaxComboEl = document.getElementById('finalMaxCombo');
+      const newRecordBadge = document.getElementById('newRecordBadge');
+      const resultComment = document.getElementById('resultComment');
+
+      const rhythmBanner = document.getElementById('rhythmBanner');
+      const rhythmBannerInner = document.getElementById('rhythmBannerInner');
+      const rhythmIcon = document.getElementById('rhythmIcon');
+      const rhythmText = document.getElementById('rhythmText');
+
+      // -----------------------------------------------------------------------
+      // サウンド管理（Web Audio API）
+      // -----------------------------------------------------------------------
+      class SoundEngine {
+        constructor() {
+          this.ctx = null;
+          this.muted = false;
+          this.noiseBuffer = null;
+        }
+
+        // ユーザー操作後にAudioContextを初期化・再開
+        init() {
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                this.ctx = new AudioCtx();
+                this._createNoiseBuffer();
+              }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume();
+            }
+          } catch (e) {
+            // AudioContextが利用できない環境ではサイレントにフォールバック
+          }
+        }
+
+        _createNoiseBuffer() {
+          if (!this.ctx) return;
+          const sampleRate = this.ctx.sampleRate;
+          const length = Math.floor(sampleRate * 0.4);
+          const buffer = this.ctx.createBuffer(1, length, sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < length; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          this.noiseBuffer = buffer;
+        }
+
+        toggleMute() {
+          this.muted = !this.muted;
+          iconSoundOn.classList.toggle('hidden', this.muted);
+          iconSoundOff.classList.toggle('hidden', !this.muted);
+          if (!this.muted) {
+            this.init();
+            this.playClick();
+          }
+        }
+
+        // 軽いUIクリック音
+        playClick() {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(660, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.06);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.08);
+        }
+
+        // 縄が風を切る音（シュッ！）
+        playWhoosh(speedFactor = 1.0) {
+          if (this.muted || !this.ctx || !this.noiseBuffer) return;
+          const now = this.ctx.currentTime;
+          const src = this.ctx.createBufferSource();
+          src.buffer = this.noiseBuffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.Q.setValueAtTime(2.8, now);
+          const baseFreq = 450 * Math.min(1.6, Math.max(0.75, speedFactor));
+          filter.frequency.setValueAtTime(baseFreq * 0.7, now);
+          filter.frequency.exponentialRampToValueAtTime(baseFreq * 2.2, now + 0.07);
+          filter.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, now + 0.16);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.16, now + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          src.start(now);
+          src.stop(now + 0.18);
+        }
+
+        // ジャンプ音（軽やかなピッチアップ）
+        playJump() {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(280, now);
+          osc.frequency.exponentialRampToValueAtTime(590, now + 0.11);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.14);
+        }
+
+        // GOOD成功音（明るい単音）
+        playGood() {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, now); // D5
+          osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.08); // G5
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.23);
+        }
+
+        // PERFECT成功音（心地よい煌びやかなチャイム和音）
+        playPerfect(combo = 1) {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          // コンボに応じてほんの少しピッチを上げる（最大+6半音）
+          const semitoneShift = Math.min(6, Math.floor((combo - 1) / 3));
+          const pitchMul = Math.pow(2, semitoneShift / 12);
+          const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = idx === 3 ? 'triangle' : 'sine';
+            const t = now + idx * 0.025;
+            osc.frequency.setValueAtTime(freq * pitchMul, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.11, t + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.4);
+          });
+        }
+
+        // リズム変化の予告音
+        playAlert(isFast = true) {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+          const freqs = isFast ? [660, 880, 1100] : [660, 520, 440];
+          freqs.forEach((f, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            const t = now + i * 0.075;
+            osc.frequency.setValueAtTime(f, t);
+            gain.gain.setValueAtTime(0.12, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.15);
+          });
+        }
+
+        // 引っかかり音（コミカルな失敗音）
+        playFail() {
+          if (this.muted || !this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          // 低音ドン＋下降音
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(75, now + 0.32);
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(700, now);
+
+          gain.gain.setValueAtTime(0.22, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        }
+      }
+
+      const sound = new SoundEngine();
+
+      // -----------------------------------------------------------------------
+      // ローカルストレージからハイスコアを読み書き
+      // -----------------------------------------------------------------------
+      const STORAGE_KEY = 'modern_jump_rope_best_v1';
+      function loadBestScore() {
+        try {
+          const val = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+          return Number.isFinite(val) && val > 0 ? val : 0;
+        } catch (e) {
+          return 0;
+        }
+      }
+
+      function saveBestScore(val) {
+        try {
+          localStorage.setItem(STORAGE_KEY, String(val));
+        } catch (e) {
+          // ストレージ無効時は無視
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // ゲーム状態管理
+      // -----------------------------------------------------------------------
+      const STATE = {
+        TITLE: 'title',
+        PLAYING: 'playing',
+        GAMEOVER: 'gameover',
+      };
+
+      const RHYTHM_MODES = {
+        NORMAL: { id: 'normal', label: 'ノーマル', multiplier: 1.0, ropeColor: '#f59e0b', ropeHighlight: '#fde68a' },
+        FAST:   { id: 'fast',   label: 'スピードアップ！', icon: '⚡', multiplier: 1.32, ropeColor: '#ef4444', ropeHighlight: '#fecaca', bgClass: 'bg-rose-500 text-white' },
+        SLOW:   { id: 'slow',   label: 'スローモーション！', icon: '🐢', multiplier: 0.68, ropeColor: '#06b6d4', ropeHighlight: '#cffafe', bgClass: 'bg-cyan-500 text-white' },
+        FEVER:  { id: 'fever',  label: 'フィーバー高速！', icon: '🔥', multiplier: 1.48, ropeColor: '#a855f7', ropeHighlight: '#f3e8ff', bgClass: 'bg-purple-600 text-white' },
+      };
+
+      const game = {
+        state: STATE.TITLE,
+        width: 0,
+        height: 0,
+        dpr: 1,
+        scale: 1,
+
+        // スコア関連
+        score: 0,
+        bestScore: loadBestScore(),
+        combo: 0,
+        maxCombo: 0,
+        isNewRecord: false,
+        gameOverTime: 0,
+
+        // 縄の状態
+        // ropeAngle: 0=真上(奥), π/2=手前中段, π=真下(足元・判定点), 3π/2=奥中段
+        ropeAngle: 0,
+        baseAngularSpeed: 3.7,   // 初期回転速度 (rad/s)
+        currentAngularSpeed: 3.7,
+        targetAngularSpeed: 3.7,
+        whooshPlayedThisTurn: false,
+        judgedThisTurn: false,
+
+        // リズム変化イベント管理
+        rhythmMode: RHYTHM_MODES.NORMAL,
+        pendingRhythmMode: null,
+        pendingTurnsLeft: 0,
+        rhythmDurationLeft: 0,
+        nextEventScore: 8,
+
+        // ジャンパーの物理状態（論理座標：地面=0、上がプラス）
+        jumperY: 0,
+        jumperVy: 0,
+        jumpGravity: 2550,
+        jumpVelocity: 760,
+        isGrounded: true,
+        jumpBufferTimer: 0,     // 先行入力バッファ
+        landSquash: 0,          // 着地時のぷにっとした潰れ演出 (0〜1)
+        lastJumpTime: 0,        // PERFECT判定用のジャンプ開始時刻
+        fallAnimTime: 0,        // 転倒アニメーション経過時間
+
+        // カメラ演出
+        shakeTimer: 0,
+        shakeIntensity: 0,
+
+        // 環境アニメーション
+        time: 0,
+        clouds: [],
+        particles: [],
+        floatingTexts: [],
+      };
+
+      bestDisplay.textContent = game.bestScore;
+
+      // -----------------------------------------------------------------------
+      // 雲の初期化
+      // -----------------------------------------------------------------------
+      function initClouds() {
+        game.clouds = [
+          { x: 0.12, y: 0.14, scale: 1.05, speed: 0.008 },
+          { x: 0.45, y: 0.09, scale: 0.8,  speed: 0.0055 },
+          { x: 0.78, y: 0.17, scale: 1.2,  speed: 0.0095 },
+          { x: 0.95, y: 0.11, scale: 0.7,  speed: 0.0065 },
+        ];
+      }
+      initClouds();
+
+      // -----------------------------------------------------------------------
+      // レスポンシブCanvasリサイズ処理
+      // -----------------------------------------------------------------------
+      function resizeCanvas() {
+        const rect = canvas.parentElement.getBoundingClientRect();
+        game.dpr = Math.min(window.devicePixelRatio || 1, 2);
+        game.width = rect.width;
+        game.height = rect.height;
+
+        canvas.width = Math.floor(game.width * game.dpr);
+        canvas.height = Math.floor(game.height * game.dpr);
+        ctx.setTransform(game.dpr, 0, 0, game.dpr, 0, 0);
+
+        // 画面サイズに応じた基準スケール（スマホ縦画面でも3人が綺麗に収まるように調整）
+        const minDim = Math.min(game.width / 820, game.height / 580);
+        game.scale = Math.max(0.46, Math.min(1.22, minDim));
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
+
+      // -----------------------------------------------------------------------
+      // エフェクト生成（パーティクル & フローティングテキスト）
+      // -----------------------------------------------------------------------
+      function spawnParticles(x, y, type) {
+        const count = type === 'perfect' ? 24 : type === 'good' ? 12 : 18;
+        const colors =
+          type === 'perfect'
+            ? ['#f59e0b', '#fbbf24', '#38bdf8', '#f43f5e', '#34d399', '#ffffff']
+            : type === 'good'
+            ? ['#38bdf8', '#34d399', '#a7f3d0', '#ffffff']
+            : ['#ef4444', '#fb923c', '#fde047', '#ffffff'];
+
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = (type === 'perfect' ? 140 : 95) + Math.random() * 190;
+          game.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - (type === 'fail' ? 60 : 120),
+            size: (4 + Math.random() * 6) * game.scale,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            life: 1.0,
+            decay: 1.4 + Math.random() * 0.9,
+            shape: Math.random() > 0.45 ? 'circle' : 'star',
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() - 0.5) * 10,
+          });
+        }
+      }
+
+      function spawnFloatingText(x, y, text, color, subText = '') {
+        game.floatingTexts.push({
+          x,
+          y,
+          text,
+          subText,
+          color,
+          life: 1.0,
+          vy: -75 * game.scale,
+          scale: 0.6,
+        });
+      }
+
+      // リズム予告バナー表示
+      function showRhythmBanner(mode) {
+        rhythmIcon.textContent = mode.icon || '⚡';
+        rhythmText.textContent = mode.label;
+        rhythmBannerInner.className = `px-5 py-2 sm:px-7 sm:py-2.5 rounded-full font-black text-sm sm:text-lg tracking-wide shadow-lg border-2 border-white flex items-center gap-2 whitespace-nowrap ${mode.bgClass || 'bg-sky-500 text-white'}`;
+
+        rhythmBanner.classList.remove('hidden', 'banner-animate');
+        // リフロー強制でアニメーション再発火
+        void rhythmBanner.offsetWidth;
+        rhythmBanner.classList.add('banner-animate');
+      }
+
+      // -----------------------------------------------------------------------
+      // ゲーム制御（開始・リトライ・ジャンプ）
+      // -----------------------------------------------------------------------
+      function startGame() {
+        sound.init();
+        sound.playClick();
+
+        game.state = STATE.PLAYING;
+        game.score = 0;
+        game.combo = 0;
+        game.maxCombo = 0;
+        game.isNewRecord = false;
+
+        // 縄は少し余裕のある真上〜奥側からスタート
+        game.ropeAngle = Math.PI * 1.55;
+        game.baseAngularSpeed = 3.7;
+        game.currentAngularSpeed = 3.7;
+        game.targetAngularSpeed = 3.7;
+        game.whooshPlayedThisTurn = false;
+        game.judgedThisTurn = true; // 最初の半回転は判定しない
+
+        // リズムイベント初期化
+        game.rhythmMode = RHYTHM_MODES.NORMAL;
+        game.pendingRhythmMode = null;
+        game.pendingTurnsLeft = 0;
+        game.rhythmDurationLeft = 0;
+        game.nextEventScore = 8;
+
+        // ジャンパー初期化
+        game.jumperY = 0;
+        game.jumperVy = 0;
+        game.isGrounded = true;
+        game.jumpBufferTimer = 0;
+        game.landSquash = 0;
+        game.fallAnimTime = 0;
+
+        game.particles = [];
+        game.floatingTexts = [];
+        game.shakeTimer = 0;
+
+        // UI更新
+        scoreDisplay.textContent = '0';
+        comboContainer.classList.add('hidden');
+        rhythmBanner.classList.add('hidden');
+        titleOverlay.classList.add('hidden');
+        gameOverOverlay.classList.add('hidden');
+        bottomControls.classList.remove('hidden');
+      }
+
+      function triggerJump() {
+        if (game.state !== STATE.PLAYING) return;
+        sound.init();
+
+        if (game.isGrounded) {
+          executeJump();
+        } else {
+          // 着地直前の入力を0.14秒間バッファして快適にする
+          game.jumpBufferTimer = 0.14;
+        }
+
+        // ボタン視覚フィードバック
+        jumpBtn.classList.add('pressed');
+        setTimeout(() => jumpBtn.classList.remove('pressed'), 100);
+      }
+
+      function executeJump() {
+        game.isGrounded = false;
+        game.jumperVy = game.jumpVelocity;
+        game.jumpBufferTimer = 0;
+        game.landSquash = 0;
+        game.lastJumpTime = game.time;
+        sound.playJump();
+      }
+
+      function triggerGameOver() {
+        game.state = STATE.GAMEOVER;
+        game.gameOverTime = performance.now();
+        game.fallAnimTime = 0;
+        game.shakeTimer = 0.38;
+        game.shakeIntensity = 12 * game.scale;
+        sound.playFail();
+
+        // 転倒エフェクト
+        const groundY = getGroundY();
+        spawnParticles(game.width * 0.5, groundY - 25 * game.scale, 'fail');
+
+        // ハイスコア更新チェック
+        if (game.score > game.bestScore) {
+          game.bestScore = game.score;
+          game.isNewRecord = true;
+          saveBestScore(game.bestScore);
+          bestDisplay.textContent = game.bestScore;
+        }
+
+        // 結果テキスト
+        finalScoreEl.textContent = game.score;
+        finalBestEl.textContent = game.bestScore;
+        finalMaxComboEl.textContent = game.maxCombo;
+        newRecordBadge.classList.toggle('hidden', !game.isNewRecord);
+
+        if (game.score === 0) {
+          resultComment.textContent = '縄が足元の影と重なる瞬間にジャンプ！';
+        } else if (game.score < 10) {
+          resultComment.textContent = 'いい調子！リズムをつかもう！';
+        } else if (game.score < 25) {
+          resultComment.textContent = 'ナイスジャンプ！スピード変化もバッチリ！';
+        } else if (game.score < 50) {
+          resultComment.textContent = 'すごい記録！大縄跳びの達人レベル！';
+        } else {
+          resultComment.textContent = '圧巻のスーパープレイ！伝説のジャンパー！';
+        }
+
+        bottomControls.classList.add('hidden');
+        rhythmBanner.classList.add('hidden');
+
+        // 転ぶアニメーションを少し見せてからリザルト表示
+        setTimeout(() => {
+          if (game.state === STATE.GAMEOVER) {
+            gameOverOverlay.classList.remove('hidden');
+          }
+        }, 420);
+      }
+
+      // -----------------------------------------------------------------------
+      // リズム変化ロジック
+      // -----------------------------------------------------------------------
+      function updateRhythmProgression() {
+        // 基本速度をスコアに応じて滑らかに上げる（上限あり）
+        game.baseAngularSpeed = Math.min(6.4, 3.7 + game.score * 0.052);
+
+        // 予告カウントダウン中ならデクリメント
+        if (game.pendingRhythmMode) {
+          game.pendingTurnsLeft--;
+          if (game.pendingTurnsLeft <= 0) {
+            game.rhythmMode = game.pendingRhythmMode;
+            game.pendingRhythmMode = null;
+            game.rhythmDurationLeft = game.rhythmMode.id === 'slow' ? 4 : 6;
+          }
+        } else if (game.rhythmMode.id !== 'normal') {
+          // 特殊リズム継続中
+          game.rhythmDurationLeft--;
+          if (game.rhythmDurationLeft <= 0) {
+            game.rhythmMode = RHYTHM_MODES.NORMAL;
+            game.nextEventScore = game.score + 6 + Math.floor(Math.random() * 4);
+          }
+        } else if (game.score >= game.nextEventScore) {
+          // 新しいリズムイベントを予告（2回転後に発動）
+          const candidates = game.score >= 22
+            ? [RHYTHM_MODES.FAST, RHYTHM_MODES.SLOW, RHYTHM_MODES.FEVER]
+            : [RHYTHM_MODES.FAST, RHYTHM_MODES.SLOW];
+          const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+          game.pendingRhythmMode = chosen;
+          game.pendingTurnsLeft = 2;
+          showRhythmBanner(chosen);
+          sound.playAlert(chosen.multiplier >= 1.0);
+        }
+
+        game.targetAngularSpeed = game.baseAngularSpeed * game.rhythmMode.multiplier;
+      }
+
+      // -----------------------------------------------------------------------
+      // 入力イベント（キーボード / マウス / タッチ）
+      // -----------------------------------------------------------------------
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+          e.preventDefault();
+          if (e.repeat) return;
+
+          if (game.state === STATE.TITLE) {
+            startGame();
+          } else if (game.state === STATE.PLAYING) {
+            triggerJump();
+          } else if (game.state === STATE.GAMEOVER) {
+            // 誤操作防止のためゲームオーバーから0.5秒後にスペースで即リトライ可能
+            if (performance.now() - game.gameOverTime > 500) {
+              startGame();
+            }
+          }
+        }
+      });
+
+      // キャンバスへのクリック／タップでジャンプ
+      function handleCanvasPress(e) {
+        if (game.state !== STATE.PLAYING) return;
+        e.preventDefault();
+        triggerJump();
+      }
+      canvas.addEventListener('mousedown', handleCanvasPress);
+      canvas.addEventListener('touchstart', handleCanvasPress, { passive: false });
+
+      // 下部ジャンプボタン
+      jumpBtn.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        triggerJump();
+      });
+      jumpBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerJump();
+      }, { passive: false });
+
+      startBtn.addEventListener('click', startGame);
+      retryBtn.addEventListener('click', startGame);
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sound.toggleMute();
+      });
+
+      // -----------------------------------------------------------------------
+      // 座標ヘルパー
+      // -----------------------------------------------------------------------
+      function getGroundY() {
+        return game.height * 0.74;
+      }
+
+      // -----------------------------------------------------------------------
+      // ゲーム更新ループ (dt: 秒)
+      // -----------------------------------------------------------------------
+      function update(dt) {
+        game.time += dt;
+
+        // 雲の移動
+        for (const c of game.clouds) {
+          c.x += c.speed * dt;
+          if (c.x > 1.2) c.x = -0.2;
+        }
+
+        // 画面シェイク減衰
+        if (game.shakeTimer > 0) {
+          game.shakeTimer = Math.max(0, game.shakeTimer - dt);
+        }
+
+        // パーティクル更新
+        for (let i = game.particles.length - 1; i >= 0; i--) {
+          const p = game.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 520 * game.scale * dt;
+          p.rotation += p.rotSpeed * dt;
+          p.life -= p.decay * dt;
+          if (p.life <= 0) game.particles.splice(i, 1);
+        }
+
+        // フローティングテキスト更新
+        for (let i = game.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = game.floatingTexts[i];
+          ft.y += ft.vy * dt;
+          ft.vy *= 0.94;
+          ft.scale += (1 - ft.scale) * Math.min(1, dt * 14);
+          ft.life -= dt * 1.15;
+          if (ft.life <= 0) game.floatingTexts.splice(i, 1);
+        }
+
+        // タイトル画面：ゆったり縄を回すデモアニメーション
+        if (game.state === STATE.TITLE) {
+          game.ropeAngle = (game.ropeAngle + 2.4 * dt) % (Math.PI * 2);
+          return;
+        }
+
+        // ゲームオーバー画面：転倒アニメーション進行
+        if (game.state === STATE.GAMEOVER) {
+          game.fallAnimTime += dt;
+          if (!game.isGrounded) {
+            game.jumperVy -= game.jumpGravity * dt;
+            game.jumperY += game.jumperVy * dt;
+            if (game.jumperY <= 0) {
+              game.jumperY = 0;
+              game.jumperVy = 0;
+              game.isGrounded = true;
+            }
+          }
+          return;
+        }
+
+        // --- プレイ中の更新 ---
+
+        // 先行入力タイマー
+        if (game.jumpBufferTimer > 0) {
+          game.jumpBufferTimer -= dt;
+        }
+
+        // ジャンパーの物理演算
+        if (!game.isGrounded) {
+          game.jumperVy -= game.jumpGravity * dt;
+          game.jumperY += game.jumperVy * dt;
+
+          if (game.jumperY <= 0) {
+            game.jumperY = 0;
+            game.jumperVy = 0;
+            game.isGrounded = true;
+            game.landSquash = 1.0;
+
+            // 先行入力があれば即座に次のジャンプへ
+            if (game.jumpBufferTimer > 0) {
+              executeJump();
+            }
+          }
+        } else if (game.landSquash > 0) {
+          game.landSquash = Math.max(0, game.landSquash - dt * 6.5);
+        }
+
+        // 縄の角速度をターゲットに向けて滑らかに補間
+        game.currentAngularSpeed += (game.targetAngularSpeed - game.currentAngularSpeed) * Math.min(1, dt * 5.5);
+
+        const prevAngle = game.ropeAngle;
+        game.ropeAngle += game.currentAngularSpeed * dt;
+
+        // 1回転リセット
+        if (game.ropeAngle >= Math.PI * 2) {
+          game.ropeAngle -= Math.PI * 2;
+          game.whooshPlayedThisTurn = false;
+          game.judgedThisTurn = false;
+        }
+
+        // 縄が手前を降りてくるとき（約 0.72π）に風切り音
+        if (!game.whooshPlayedThisTurn && game.ropeAngle >= Math.PI * 0.72 && game.ropeAngle < Math.PI * 1.2) {
+          game.whooshPlayedThisTurn = true;
+          sound.playWhoosh(game.currentAngularSpeed / 4.0);
+        }
+
+        // 縄が真下（π）を通過する瞬間にジャンプ成否を判定
+        const crossedBottom =
+          !game.judgedThisTurn &&
+          ((prevAngle < Math.PI && game.ropeAngle >= Math.PI) ||
+            (game.ropeAngle >= Math.PI && game.ropeAngle < Math.PI + 0.35));
+
+        if (crossedBottom) {
+          game.judgedThisTurn = true;
+          evaluateJump();
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // タイミング＆成否判定
+      // -----------------------------------------------------------------------
+      function evaluateJump() {
+        const groundY = getGroundY();
+        const centerX = game.width * 0.5;
+
+        // 縄を飛び越えるために必要な最低高度（論理ピクセル）
+        const clearanceHeight = 24;
+
+        if (game.jumperY >= clearanceHeight) {
+          // 成功！
+          game.score++;
+          game.combo++;
+          if (game.combo > game.maxCombo) game.maxCombo = game.combo;
+
+          scoreDisplay.textContent = game.score;
+
+          // コンボ表示更新
+          if (game.combo >= 2) {
+            comboContainer.classList.remove('hidden');
+            comboDisplay.textContent = game.combo;
+            comboContainer.classList.remove('combo-pop');
+            void comboContainer.offsetWidth;
+            comboContainer.classList.add('combo-pop');
+          }
+
+          // PERFECT判定：頂点付近（高さ68以上、またはジャンプから0.13〜0.34秒の絶妙なタイミング）
+          const elapsedSinceJump = game.time - game.lastJumpTime;
+          const isPerfect = game.jumperY >= 70 || (elapsedSinceJump >= 0.14 && elapsedSinceJump <= 0.33);
+
+          const effectY = groundY - (145 + game.jumperY * 0.7) * game.scale;
+
+          if (isPerfect) {
+            sound.playPerfect(game.combo);
+            spawnParticles(centerX, groundY - 30 * game.scale, 'perfect');
+            spawnFloatingText(
+              centerX,
+              effectY,
+              'PERFECT!',
+              '#f59e0b',
+              game.combo >= 3 ? `${game.combo} COMBO!` : ''
+            );
+          } else {
+            sound.playGood();
+            spawnParticles(centerX, groundY - 25 * game.scale, 'good');
+            spawnFloatingText(centerX, effectY, 'GOOD!', '#0ea5e9');
+          }
+
+          // 難易度とリズム変化の進行
+          updateRhythmProgression();
+        } else {
+          // 引っかかり → ゲームオーバー
+          triggerGameOver();
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 描画関数群（モダン・ベクター風フラットデザイン）
+      // -----------------------------------------------------------------------
+      function draw() {
+        const w = game.width;
+        const h = game.height;
+        const s = game.scale;
+        const groundY = getGroundY();
+
+        ctx.save();
+
+        // 画面シェイク適用
+        if (game.shakeTimer > 0) {
+          const mag = game.shakeIntensity * (game.shakeTimer / 0.38);
+          const dx = (Math.random() - 0.5) * 2 * mag;
+          const dy = (Math.random() - 0.5) * 2 * mag;
+          ctx.translate(dx, dy);
+        }
+
+        // 1. 背景（空・太陽・雲・丘・木・グラウンド）
+        drawBackground(w, h, groundY, s);
+
+        // キャラクター配置座標
+        const centerX = w * 0.5;
+        const turnerOffsetX = Math.min(w * 0.36, 290 * s);
+        const leftTurnerX = centerX - turnerOffsetX;
+        const rightTurnerX = centerX + turnerOffsetX;
+
+        // 縄の3Dパラメータ計算
+        // angle = 0: 真上(y=+1, z=0), π/2: 手前(y=0, z=+1), π: 真下(y=-1, z=0), 3π/2: 奥(y=0, z=-1)
+        const heightFactor = Math.cos(game.ropeAngle); // +1(上) 〜 -1(下)
+        const depthFactor = Math.sin(game.ropeAngle);  // +1(手前) 〜 -1(奥)
+
+        // 縄を持つ手の位置（ターナーの腕の回転に連動）
+        const handRadius = 22 * s;
+        const handCenterY = groundY - 68 * s;
+        const handOffsetY = -Math.cos(game.ropeAngle) * handRadius;
+        const handOffsetX = Math.sin(game.ropeAngle) * (handRadius * 0.45);
+
+        const leftHand = {
+          x: leftTurnerX + 26 * s + handOffsetX,
+          y: handCenterY + handOffsetY,
+        };
+        const rightHand = {
+          x: rightTurnerX - 26 * s - handOffsetX,
+          y: handCenterY + handOffsetY,
+        };
+
+        // 2. 地面の影（ターナー・ジャンパー・縄の影）
+        drawGroundShadows(centerX, leftTurnerX, rightTurnerX, groundY, s, heightFactor, depthFactor);
+
+        // 3. 左右のターナー（縄を回す人たち）
+        drawTurner(leftTurnerX, groundY, s, 1, leftHand, game.ropeAngle);
+        drawTurner(rightTurnerX, groundY, s, -1, rightHand, game.ropeAngle);
+
+        // 4. 縄とジャンパーのZオーダー描画
+        // depthFactor < 0（奥側を上がっていくとき）は縄をジャンパーの「後ろ」に描画
+        // depthFactor >= 0（手前側を降りてくるとき）は縄をジャンパーの「前」に描画
+        const isRopeBehind = depthFactor < 0;
+
+        if (isRopeBehind) {
+          drawRope(leftHand, rightHand, centerX, groundY, s, heightFactor, depthFactor);
+          drawJumper(centerX, groundY, s);
+        } else {
+          drawJumper(centerX, groundY, s);
+          drawRope(leftHand, rightHand, centerX, groundY, s, heightFactor, depthFactor);
+        }
+
+        // 5. パーティクル & フローティングテキスト
+        drawParticles();
+        drawFloatingTexts(s);
+
+        ctx.restore();
+      }
+
+      // --- 背景描画 ---
+      function drawBackground(w, h, groundY, s) {
+        // 空のグラデーション
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+        skyGrad.addColorStop(0, '#38bdf8');
+        skyGrad.addColorStop(0.55, '#7dd3fc');
+        skyGrad.addColorStop(1, '#e0f2fe');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, w, groundY);
+
+        // 太陽（やわらかな光の輪）
+        const sunX = w * 0.84;
+        const sunY = h * 0.16;
+        const sunR = 36 * s;
+        ctx.save();
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.28)';
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR * 1.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.5)';
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR * 1.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // ふんわり流れる雲
+        for (const c of game.clouds) {
+          drawCloud(c.x * w, c.y * h, c.scale * s);
+        }
+
+        // 遠くの丘（奥）
+        ctx.fillStyle = '#86efac';
+        ctx.beginPath();
+        ctx.moveTo(0, groundY);
+        ctx.quadraticCurveTo(w * 0.25, groundY - 95 * s, w * 0.55, groundY - 35 * s);
+        ctx.quadraticCurveTo(w * 0.82, groundY - 85 * s, w, groundY - 25 * s);
+        ctx.lineTo(w, groundY);
+        ctx.closePath();
+        ctx.fill();
+
+        // 近くの丘（手前）
+        ctx.fillStyle = '#4ade80';
+        ctx.beginPath();
+        ctx.moveTo(0, groundY);
+        ctx.quadraticCurveTo(w * 0.18, groundY - 48 * s, w * 0.42, groundY - 12 * s);
+        ctx.quadraticCurveTo(w * 0.72, groundY - 58 * s, w, groundY - 14 * s);
+        ctx.lineTo(w, groundY);
+        ctx.closePath();
+        ctx.fill();
+
+        // 公園の木々（フラットなベクター木）
+        drawTree(w * 0.1, groundY - 24 * s, 0.85 * s);
+        drawTree(w * 0.17, groundY - 18 * s, 0.65 * s);
+        drawTree(w * 0.86, groundY - 22 * s, 0.9 * s);
+        drawTree(w * 0.93, groundY - 15 * s, 0.62 * s);
+
+        // グラウンド（明るい芝生 + タータン風の足場コート）
+        const grassGrad = ctx.createLinearGradient(0, groundY, 0, h);
+        grassGrad.addColorStop(0, '#34d399');
+        grassGrad.addColorStop(1, '#10b981');
+        ctx.fillStyle = grassGrad;
+        ctx.fillRect(0, groundY, w, h - groundY);
+
+        // 芝生の上の爽やかなプレイコート（楕円のグラウンドエリア）
+        const courtW = Math.min(w * 0.88, 760 * s);
+        const courtH = 66 * s;
+        ctx.save();
+        ctx.fillStyle = '#fef3c7';
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, groundY + 12 * s, courtW * 0.5, courtH * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // コートの白いライン
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 3 * s;
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, groundY + 12 * s, courtW * 0.45, courtH * 0.4, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 中央のジャンプ位置マーカー（目安の円）
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+        ctx.lineWidth = 2.5 * s;
+        ctx.setLineDash([6 * s, 5 * s]);
+        ctx.beginPath();
+        ctx.ellipse(w * 0.5, groundY + 4 * s, 44 * s, 12 * s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawCloud(x, y, s) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+        ctx.beginPath();
+        ctx.arc(x, y, 22 * s, 0, Math.PI * 2);
+        ctx.arc(x + 22 * s, y - 6 * s, 26 * s, 0, Math.PI * 2);
+        ctx.arc(x + 48 * s, y, 20 * s, 0, Math.PI * 2);
+        ctx.arc(x + 24 * s, y + 6 * s, 20 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawTree(x, y, s) {
+        ctx.save();
+        // 幹
+        ctx.fillStyle = '#a16207';
+        roundRect(ctx, x - 5 * s, y - 28 * s, 10 * s, 32 * s, 4 * s);
+        ctx.fill();
+        // 葉（2色のモダンフラット）
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x, y - 42 * s, 22 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#4ade80';
+        ctx.beginPath();
+        ctx.arc(x - 6 * s, y - 47 * s, 13 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // --- 地面の影（キャラクター＆縄の影） ---
+      function drawGroundShadows(centerX, leftX, rightX, groundY, s, heightFactor, depthFactor) {
+        ctx.save();
+
+        // ターナー2人の影
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.14)';
+        ctx.beginPath();
+        ctx.ellipse(leftX, groundY + 4 * s, 28 * s, 8 * s, 0, 0, Math.PI * 2);
+        ctx.ellipse(rightX, groundY + 4 * s, 28 * s, 8 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ジャンパーの影（高く跳ぶほど小さく薄くなる）
+        const jumpRatio = Math.max(0.35, 1 - game.jumperY / 260);
+        ctx.fillStyle = `rgba(15, 23, 42, ${0.18 * jumpRatio})`;
+        ctx.beginPath();
+        ctx.ellipse(centerX, groundY + 4 * s, 30 * s * jumpRatio, 9 * s * jumpRatio, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 縄の影（足元に近づくほど濃く、中央の地面ラインに吸い付く！）
+        // heightFactor: +1(真上) -> -1(真下)
+        const proximity = (1 - heightFactor) * 0.5; // 0(真上) 〜 1(真下)
+        const shadowAlpha = 0.05 + Math.pow(proximity, 2.2) * 0.34;
+        const shadowOffsetY = depthFactor * 26 * s; // 手前なら下、奥なら上に影が移動
+        const shadowWidth = (2.5 + (1 - proximity) * 5) * s;
+
+        ctx.strokeStyle = `rgba(15, 23, 42, ${shadowAlpha})`;
+        ctx.lineWidth = shadowWidth;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(leftX + 20 * s, groundY + 4 * s);
+        ctx.quadraticCurveTo(centerX, groundY + 6 * s + shadowOffsetY, rightX - 20 * s, groundY + 4 * s);
+        ctx.stroke();
+
+        // 縄が地面スレスレに来た瞬間のタイミング・ハイライト波紋
+        if (proximity > 0.88 && game.state === STATE.PLAYING) {
+          const flash = (proximity - 0.88) / 0.12;
+          ctx.strokeStyle = `rgba(245, 158, 11, ${flash * 0.55})`;
+          ctx.lineWidth = 3 * s;
+          ctx.beginPath();
+          ctx.ellipse(centerX, groundY + 4 * s, (38 + flash * 16) * s, (10 + flash * 4) * s, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      // --- 縄の3D曲線描画 ---
+      function drawRope(leftHand, rightHand, centerX, groundY, s, heightFactor, depthFactor) {
+        ctx.save();
+
+        // 縄の中央（頂点）のY座標を計算
+        // heightFactor = +1 -> 頭上高く、heightFactor = -1 -> 足元（groundY）
+        const ropeCenterBaseY = groundY - 82 * s;
+        const verticalAmp = 96 * s;
+        // 地面より下にめり込まないように少しカーブを調整
+        const rawMidY = ropeCenterBaseY - heightFactor * verticalAmp;
+        const midY = Math.min(groundY + 6 * s, rawMidY);
+
+        // 2次ベジェ曲線の制御点（曲線が中点(centerX, midY)を通るように逆算）
+        const avgHandY = (leftHand.y + rightHand.y) * 0.5;
+        const ctrlY = 2 * midY - avgHandY;
+
+        // 奥行きに応じた太さ（手前ほど少し太く、奥ほど少し細く）
+        const thickness = (6.5 + depthFactor * 2.2) * s;
+
+        // 縄のメイン色（リズムモードに応じて変化）
+        const ropeColor = game.rhythmMode.ropeColor;
+        const highlightColor = game.rhythmMode.ropeHighlight;
+
+        // 縄の縁取り（視認性アップ）
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.22)';
+        ctx.lineWidth = thickness + 2.5 * s;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(leftHand.x, leftHand.y);
+        ctx.quadraticCurveTo(centerX, ctrlY, rightHand.x, rightHand.y);
+        ctx.stroke();
+
+        // 縄の本体
+        ctx.strokeStyle = ropeColor;
+        ctx.lineWidth = thickness;
+        ctx.beginPath();
+        ctx.moveTo(leftHand.x, leftHand.y);
+        ctx.quadraticCurveTo(centerX, ctrlY, rightHand.x, rightHand.y);
+        ctx.stroke();
+
+        // 縄のハイライト（光沢感）
+        ctx.strokeStyle = highlightColor;
+        ctx.lineWidth = thickness * 0.34;
+        ctx.beginPath();
+        ctx.moveTo(leftHand.x, leftHand.y - 1.2 * s);
+        ctx.quadraticCurveTo(centerX, ctrlY - 1.5 * s, rightHand.x, rightHand.y - 1.2 * s);
+        ctx.stroke();
+
+        // グリップ（持ち手）
+        ctx.fillStyle = '#334155';
+        ctx.beginPath();
+        ctx.arc(leftHand.x, leftHand.y, 4.5 * s, 0, Math.PI * 2);
+        ctx.arc(rightHand.x, rightHand.y, 4.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // --- ターナー（左右の縄回しキャラ）描画 ---
+      function drawTurner(x, groundY, s, facing, handPos, ropeAngle) {
+        // facing: +1 は左に立って右向き、-1 は右に立って左向き
+        const bob = Math.sin(ropeAngle) * 3.5 * s;
+        const shirtColor = facing === 1 ? '#0ea5e9' : '#10b981';
+        const capColor = facing === 1 ? '#0284c7' : '#059669';
+
+        ctx.save();
+        ctx.translate(x, groundY);
+
+        // 脚（スニーカー＆パンツ）
+        ctx.fillStyle = '#334155';
+        roundRect(ctx, -13 * s, -36 * s + bob * 0.4, 10 * s, 32 * s, 5 * s);
+        ctx.fill();
+        roundRect(ctx, 3 * s, -36 * s + bob * 0.4, 10 * s, 32 * s, 5 * s);
+        ctx.fill();
+
+        // 靴
+        ctx.fillStyle = '#ffffff';
+        roundRect(ctx, -15 * s, -8 * s, 14 * s, 8 * s, 4 * s);
+        ctx.fill();
+        roundRect(ctx, 1 * s, -8 * s, 14 * s, 8 * s, 4 * s);
+        ctx.fill();
+
+        // 胴体（スポーティなシャツ）
+        ctx.fillStyle = shirtColor;
+        roundRect(ctx, -18 * s, -82 * s + bob, 36 * s, 48 * s, 14 * s);
+        ctx.fill();
+
+        // シャツの白いラインアクセント
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+        roundRect(ctx, -18 * s, -62 * s + bob, 36 * s, 7 * s, 2 * s);
+        ctx.fill();
+
+        // 頭
+        const headY = -102 * s + bob;
+        ctx.fillStyle = '#fed7aa';
+        ctx.beginPath();
+        ctx.arc(0, headY, 19 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        // キャップ（帽子）
+        ctx.fillStyle = capColor;
+        ctx.beginPath();
+        ctx.arc(0, headY - 3 * s, 19.5 * s, Math.PI, Math.PI * 2);
+        ctx.fill();
+        // 帽子のつば
+        ctx.beginPath();
+        ctx.ellipse(facing * 12 * s, headY - 4 * s, 13 * s, 4.5 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 目（中央のジャンパーを見ている）
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.arc(facing * 7 * s, headY + 1 * s, 2.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+        // ほっぺ
+        ctx.fillStyle = 'rgba(251, 113, 133, 0.45)';
+        ctx.beginPath();
+        ctx.arc(facing * 10 * s, headY + 6 * s, 3.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 反対側の腕（腰に添える）
+        ctx.strokeStyle = shirtColor;
+        ctx.lineWidth = 9 * s;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-facing * 14 * s, -72 * s + bob);
+        ctx.lineTo(-facing * 20 * s, -48 * s + bob);
+        ctx.stroke();
+
+        // 縄を回す腕（肩から手先まで）
+        const shoulderX = facing * 12 * s;
+        const shoulderY = -72 * s + bob;
+        const localHandX = handPos.x - x;
+        const localHandY = handPos.y - groundY;
+
+        ctx.strokeStyle = '#fed7aa';
+        ctx.lineWidth = 9 * s;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(shoulderX, shoulderY);
+        ctx.lineTo(localHandX, localHandY);
+        ctx.stroke();
+
+        // 手のひら
+        ctx.fillStyle = '#fed7aa';
+        ctx.beginPath();
+        ctx.arc(localHandX, localHandY, 6 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // --- ジャンパー（中央のプレイヤーキャラ）描画 ---
+      function drawJumper(x, groundY, s) {
+        ctx.save();
+
+        const yPos = groundY - game.jumperY * s;
+        ctx.translate(x, yPos);
+
+        // ゲームオーバー時の転倒アニメーション
+        if (game.state === STATE.GAMEOVER) {
+          const t = Math.min(1, game.fallAnimTime * 4.5);
+          const fallAngle = t * (Math.PI * 0.44);
+          ctx.translate(t * 16 * s, -12 * s * t);
+          ctx.rotate(fallAngle);
+        } else {
+          // 待機・着地時のスクワッシュ＆ストレッチ
+          let scaleX = 1;
+          let scaleY = 1;
+          if (!game.isGrounded) {
+            // ジャンプ中は縦に少し伸びる
+            const stretch = Math.min(0.12, Math.abs(game.jumperVy) / 5500);
+            scaleX = 1 - stretch * 0.6;
+            scaleY = 1 + stretch;
+          } else if (game.landSquash > 0) {
+            // 着地時にぷにっと沈む
+            scaleX = 1 + game.landSquash * 0.16;
+            scaleY = 1 - game.landSquash * 0.16;
+          } else {
+            // 待機中は軽くリズムを取る
+            const idleBounce = Math.sin(game.time * 7) * 0.03;
+            scaleX = 1 - idleBounce;
+            scaleY = 1 + idleBounce;
+          }
+          ctx.scale(scaleX, scaleY);
+        }
+
+        const isJumping = !game.isGrounded && game.state === STATE.PLAYING;
+        const isFallen = game.state === STATE.GAMEOVER;
+
+        // 脚の描画（ジャンプ中は元気よく少し開いて曲げる）
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 11 * s;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (isJumping) {
+          // 左脚
+          ctx.beginPath();
+          ctx.moveTo(-9 * s, -36 * s);
+          ctx.lineTo(-17 * s, -20 * s);
+          ctx.lineTo(-12 * s, -9 * s);
+          ctx.stroke();
+          // 右脚
+          ctx.beginPath();
+          ctx.moveTo(9 * s, -36 * s);
+          ctx.lineTo(17 * s, -20 * s);
+          ctx.lineTo(12 * s, -9 * s);
+          ctx.stroke();
+
+          // スニーカー（ジャンプ中）
+          drawShoe(-12 * s, -7 * s, s, '#ef4444');
+          drawShoe(12 * s, -7 * s, s, '#ef4444');
+        } else {
+          // 立ち姿の脚
+          ctx.beginPath();
+          ctx.moveTo(-9 * s, -36 * s);
+          ctx.lineTo(-10 * s, -8 * s);
+          ctx.moveTo(9 * s, -36 * s);
+          ctx.lineTo(10 * s, -8 * s);
+          ctx.stroke();
+
+          drawShoe(-11 * s, -5 * s, s, '#ef4444');
+          drawShoe(11 * s, -5 * s, s, '#ef4444');
+        }
+
+        // 腕（ジャンプ中はバンザイ気味に上へ）
+        ctx.strokeStyle = '#fed7aa';
+        ctx.lineWidth = 9.5 * s;
+        ctx.lineCap = 'round';
+        const armLift = isJumping ? -26 * s : isFallen ? -16 * s : Math.sin(game.time * 7) * 3 * s;
+
+        ctx.beginPath();
+        ctx.moveTo(-18 * s, -74 * s);
+        ctx.lineTo(-32 * s, -54 * s + armLift);
+        ctx.moveTo(18 * s, -74 * s);
+        ctx.lineTo(32 * s, -54 * s + armLift);
+        ctx.stroke();
+
+        // 胴体（爽やかなオレンジ＆白のスポーツウェア）
+        ctx.fillStyle = '#f97316';
+        roundRect(ctx, -20 * s, -85 * s, 40 * s, 51 * s, 15 * s);
+        ctx.fill();
+
+        // ゼッケン風の白い丸バッジ
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, -61 * s, 11 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f97316';
+        ctx.font = `900 ${Math.round(12 * s)}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', 0, -60 * s);
+
+        // 頭
+        const headY = -106 * s;
+        ctx.fillStyle = '#fed7aa';
+        ctx.beginPath();
+        ctx.arc(0, headY, 22 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 髪型（モダンな丸みのあるダークブラウン）
+        ctx.fillStyle = '#334155';
+        ctx.beginPath();
+        ctx.arc(0, headY - 4 * s, 22.5 * s, Math.PI * 0.95, Math.PI * 2.05);
+        ctx.fill();
+        // 前髪のアクセント
+        ctx.beginPath();
+        ctx.ellipse(-6 * s, headY - 15 * s, 9 * s, 5 * s, -0.25, 0, Math.PI * 2);
+        ctx.ellipse(7 * s, headY - 14 * s, 8 * s, 4.5 * s, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 赤いハチマキ / ヘアバンド
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 4.5 * s;
+        ctx.beginPath();
+        ctx.arc(0, headY - 3 * s, 21.5 * s, Math.PI * 1.12, Math.PI * 1.88);
+        ctx.stroke();
+
+        // 表情
+        if (isFallen) {
+          // 引っかかったときの「＞＜」目
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 2.6 * s;
+          ctx.beginPath();
+          // 左目 >
+          ctx.moveTo(-11 * s, headY - 3 * s);
+          ctx.lineTo(-5 * s, headY + 1 * s);
+          ctx.lineTo(-11 * s, headY + 5 * s);
+          // 右目 <
+          ctx.moveTo(11 * s, headY - 3 * s);
+          ctx.lineTo(5 * s, headY + 1 * s);
+          ctx.lineTo(11 * s, headY + 5 * s);
+          ctx.stroke();
+
+          // あわわ口
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.ellipse(0, headY + 11 * s, 4.5 * s, 5.5 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // 元気な目
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.arc(-7.5 * s, headY + 1 * s, 2.8 * s, 0, Math.PI * 2);
+          ctx.arc(7.5 * s, headY + 1 * s, 2.8 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 目のハイライト
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(-8.3 * s, headY, 1 * s, 0, Math.PI * 2);
+          ctx.arc(6.7 * s, headY, 1 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          // ほっぺ
+          ctx.fillStyle = 'rgba(251, 113, 133, 0.45)';
+          ctx.beginPath();
+          ctx.arc(-13 * s, headY + 6 * s, 3.8 * s, 0, Math.PI * 2);
+          ctx.arc(13 * s, headY + 6 * s, 3.8 * s, 0, Math.PI * 2);
+          ctx.fill();
+
+          // 口（ジャンプ中は楽しそうな笑顔！）
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 2.2 * s;
+          ctx.lineCap = 'round';
+          if (isJumping) {
+            ctx.fillStyle = '#fb7185';
+            ctx.beginPath();
+            ctx.arc(0, headY + 8 * s, 5.5 * s, 0, Math.PI);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.arc(0, headY + 6 * s, 5 * s, 0.15 * Math.PI, 0.85 * Math.PI);
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      }
+
+      function drawShoe(x, y, s, color) {
+        ctx.fillStyle = color;
+        roundRect(ctx, x - 8 * s, y - 4 * s, 16 * s, 9 * s, 4.5 * s);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        roundRect(ctx, x - 8 * s, y + 2 * s, 16 * s, 3 * s, 1.5 * s);
+        ctx.fill();
+      }
+
+      // --- パーティクル描画 ---
+      function drawParticles() {
+        for (const p of game.particles) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation);
+          ctx.fillStyle = p.color;
+
+          if (p.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size * 0.55, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // 4芒星（キラキラ）
+            const r = p.size;
+            ctx.beginPath();
+            ctx.moveTo(0, -r);
+            ctx.quadraticCurveTo(0, 0, r, 0);
+            ctx.quadraticCurveTo(0, 0, 0, r);
+            ctx.quadraticCurveTo(0, 0, -r, 0);
+            ctx.quadraticCurveTo(0, 0, 0, -r);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      // --- フローティングテキスト描画 ---
+      function drawFloatingTexts(s) {
+        for (const ft of game.floatingTexts) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, ft.life * 1.4));
+          ctx.translate(ft.x, ft.y);
+          ctx.scale(ft.scale, ft.scale);
+
+          ctx.font = `900 ${Math.round(30 * s)}px 'M PLUS Rounded 1c', 'Inter', sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // 白い縁取り
+          ctx.lineWidth = 6 * s;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineJoin = 'round';
+          ctx.strokeText(ft.text, 0, 0);
+
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, 0, 0);
+
+          if (ft.subText) {
+            ctx.font = `900 ${Math.round(16 * s)}px 'M PLUS Rounded 1c', 'Inter', sans-serif`;
+            ctx.lineWidth = 4 * s;
+            ctx.strokeText(ft.subText, 0, 26 * s);
+            ctx.fillStyle = '#ea580c';
+            ctx.fillText(ft.subText, 0, 26 * s);
+          }
+
+          ctx.restore();
+        }
+      }
+
+      // --- 角丸長方形ユーティリティ ---
+      function roundRect(context, x, y, width, height, radius) {
+        const r = Math.min(radius, width * 0.5, height * 0.5);
+        context.beginPath();
+        context.moveTo(x + r, y);
+        context.arcTo(x + width, y, x + width, y + height, r);
+        context.arcTo(x + width, y + height, x, y + height, r);
+        context.arcTo(x, y + height, x, y, r);
+        context.arcTo(x, y, x + width, y, r);
+        context.closePath();
+      }
+
+      // -----------------------------------------------------------------------
+      // メインアニメーションループ
+      // -----------------------------------------------------------------------
+      let lastTime = 0;
+      function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        // タブ切り替え時などの極端なdtをクランプ
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        update(dt);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // ウィンドウ読み込み後にアニメーション開始
+      window.addEventListener('load', () => {
+        resizeCanvas();
+        requestAnimationFrame(gameLoop);
+      });
+    })();
+  </script>
+</body>
+</html>
