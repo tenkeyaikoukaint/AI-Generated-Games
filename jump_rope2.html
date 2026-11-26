@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>なわとびゲーム</title>
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #1a1a2e;
+    color: #eee;
+    font-family: monospace, sans-serif;
+    text-align: center;
+  }
+  canvas {
+    display: block;
+    margin: 10px auto;
+    background: #16213e;
+    border: 2px solid #0f3460;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  p {
+    font-size: 14px;
+    color: #aaa;
+  }
+</style>
+</head>
+<body>
+  <canvas id="game" width="400" height="300"></canvas>
+  <p>スペースキー / クリック / タップ でジャンプ</p>
+
+<script>
+(function() {
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+
+  // 古いブラウザ向けフォールバック
+  var reqAnim = window.requestAnimationFrame ||
+                window.webkitRequestAnimationFrame ||
+                window.mozRequestAnimationFrame ||
+                function(cb) { return setTimeout(cb, 16); };
+
+  var STATE_TITLE = 0;
+  var STATE_PLAY = 1;
+  var STATE_OVER = 2;
+
+  var state = STATE_TITLE;
+  var score = 0;
+  var highScore = 0;
+
+  // ローカルファイル実行時のIE制限対策
+  try {
+    highScore = parseInt(localStorage.getItem('nawatobi_hi'), 10) || 0;
+  } catch (e) {}
+
+  var groundY = 240;
+  var playerY = 0;
+  var playerVy = 0;
+  var gravity = 0.65;
+  var jumpPower = 11.5;
+
+  var ropeAngle = Math.PI * 1.5; // 真上からスタート
+  var ropeSpeed = 0.055;
+  var ropeCenterY = 165;
+  var ropeRadiusY = 85;
+
+  function resetGame() {
+    score = 0;
+    playerY = 0;
+    playerVy = 0;
+    ropeAngle = Math.PI * 1.5;
+    ropeSpeed = 0.055;
+    state = STATE_PLAY;
+  }
+
+  function action() {
+    if (state === STATE_TITLE || state === STATE_OVER) {
+      resetGame();
+    } else if (state === STATE_PLAY && playerY === 0) {
+      playerVy = jumpPower;
+    }
+  }
+
+  // キーボード・マウス・タッチ対応
+  document.addEventListener('keydown', function(e) {
+    var code = e.keyCode || e.which;
+    if (code === 32 || code === 38) { // Space or Up
+      if (e.preventDefault) e.preventDefault();
+      action();
+    }
+  }, false);
+
+  canvas.addEventListener('mousedown', function(e) {
+    if (e.preventDefault) e.preventDefault();
+    action();
+  }, false);
+
+  canvas.addEventListener('touchstart', function(e) {
+    if (e.preventDefault) e.preventDefault();
+    action();
+  }, false);
+
+  function update() {
+    if (state !== STATE_PLAY) return;
+
+    // プレイヤーの物理演算
+    if (playerY > 0 || playerVy > 0) {
+      playerY += playerVy;
+      playerVy -= gravity;
+      if (playerY <= 0) {
+        playerY = 0;
+        playerVy = 0;
+      }
+    }
+
+    // 縄の回転と着地判定（PI/2 が最下点）
+    var prevAngle = ropeAngle;
+    ropeAngle += ropeSpeed;
+
+    if (prevAngle < Math.PI / 2 && ropeAngle >= Math.PI / 2) {
+      if (playerY < 18) {
+        state = STATE_OVER;
+        if (score > highScore) {
+          highScore = score;
+          try {
+            localStorage.setItem('nawatobi_hi', String(highScore));
+          } catch (e) {}
+        }
+      } else {
+        score += 1;
+        // スコアに応じて徐々にスピードアップ
+        ropeSpeed = Math.min(0.14, 0.055 + score * 0.0025);
+      }
+    }
+
+    if (ropeAngle >= Math.PI * 2) {
+      ropeAngle -= Math.PI * 2;
+    }
+  }
+
+  function drawRope() {
+    var tipY = ropeCenterY + Math.sin(ropeAngle) * ropeRadiusY;
+    ctx.beginPath();
+    ctx.moveTo(40, ropeCenterY);
+    ctx.quadraticCurveTo(200, tipY + (tipY - ropeCenterY) * 0.85, 360, ropeCenterY);
+    ctx.strokeStyle = Math.cos(ropeAngle) > 0 ? '#e94560' : '#8a2c3d';
+    ctx.lineWidth = Math.cos(ropeAngle) > 0 ? 4 : 2.5;
+    ctx.stroke();
+  }
+
+  function drawPlayer() {
+    var x = 200;
+    var y = groundY - playerY;
+
+    // 影
+    var shadowSize = Math.max(6, 18 - playerY * 0.15);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.ellipse ? ctx.ellipse(x, groundY + 2, shadowSize, 4, 0, 0, Math.PI * 2)
+                : ctx.arc(x, groundY + 2, shadowSize * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 頭
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    ctx.arc(x, y - 48, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 体
+    ctx.strokeStyle = '#f5f5f5';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 38);
+    ctx.lineTo(x, y - 16);
+    // 足（ジャンプ中は少し曲げる）
+    var legSpread = playerY > 0 ? 12 : 7;
+    var footY = playerY > 0 ? y - 4 : y;
+    ctx.moveTo(x, y - 16);
+    ctx.lineTo(x - legSpread, footY);
+    ctx.moveTo(x, y - 16);
+    ctx.lineTo(x + legSpread, footY);
+    // 腕
+    ctx.moveTo(x - 14, y - 28);
+    ctx.lineTo(x + 14, y - 28);
+    ctx.stroke();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 地面
+    ctx.fillStyle = '#0f3460';
+    ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+    // 縄の持ち手（左右の柱）
+    ctx.fillStyle = '#533483';
+    ctx.fillRect(32, ropeCenterY - 10, 8, groundY - ropeCenterY + 10);
+    ctx.fillRect(360, ropeCenterY - 10, 8, groundY - ropeCenterY + 10);
+
+    // 縄が奥にあるときはプレイヤーより先に描画
+    var ropeInFront = Math.cos(ropeAngle) > 0;
+    if (!ropeInFront) drawRope();
+    drawPlayer();
+    if (ropeInFront) drawRope();
+
+    // スコア表示
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('SCORE: ' + score, 14, 28);
+    ctx.textAlign = 'right';
+    ctx.fillText('HI: ' + highScore, canvas.width - 14, 28);
+
+    // 状態メッセージ
+    ctx.textAlign = 'center';
+    if (state === STATE_TITLE) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px monospace';
+      ctx.fillText('NAWATOBI', 200, 130);
+      ctx.font = '15px monospace';
+      ctx.fillText('SPACE / CLICK TO START', 200, 170);
+    } else if (state === STATE_OVER) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#e94560';
+      ctx.font = 'bold 28px monospace';
+      ctx.fillText('GAME OVER', 200, 130);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '15px monospace';
+      ctx.fillText('SPACE / CLICK TO RETRY', 200, 170);
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    reqAnim(loop);
+  }
+
+  loop();
+})();
+</script>
+</body>
+</html>
