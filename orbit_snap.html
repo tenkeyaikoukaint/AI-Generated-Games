@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ORBIT SNAP</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #090a0f;
+      font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+      touch-action: none;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    /* Minimal zero-text corner HUD */
+    .hud-top-left {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      left: max(18px, env(safe-area-inset-left));
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      z-index: 10;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(15, 18, 28, 0.55);
+      border: 1px solid rgba(255, 215, 64, 0.25);
+      backdrop-filter: blur(6px);
+    }
+
+    .crown-icon {
+      width: 20px;
+      height: 20px;
+      fill: #ffd740;
+      filter: drop-shadow(0 0 6px rgba(255, 215, 64, 0.7));
+    }
+
+    #best-score-num {
+      color: #ffd740;
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      text-shadow: 0 0 10px rgba(255, 215, 64, 0.5);
+    }
+
+    #mute-btn {
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top));
+      right: max(18px, env(safe-area-inset-right));
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      background: rgba(15, 18, 28, 0.6);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 20;
+      transition: transform 0.12s ease, border-color 0.2s ease, background-color 0.2s ease;
+    }
+
+    #mute-btn:hover {
+      border-color: rgba(0, 240, 255, 0.8);
+      background: rgba(0, 240, 255, 0.14);
+    }
+
+    #mute-btn:active {
+      transform: scale(0.92);
+    }
+
+    #mute-btn svg {
+      width: 22px;
+      height: 22px;
+      stroke: #00f0ff;
+      fill: none;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.6));
+    }
+
+    #mute-btn.muted {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    #mute-btn.muted svg {
+      stroke: rgba(255, 255, 255, 0.4);
+      filter: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Zero-text Top-Left Best Score HUD (Crown Icon + Number) -->
+  <div class="hud-top-left" aria-hidden="true">
+    <svg class="crown-icon" viewBox="0 0 24 24">
+      <path d="M3 18h18v2H3v-2zm0-2L5 7l4.5 4L12 5l2.5 6L19 7l2 9H3z"/>
+    </svg>
+    <span id="best-score-num">0</span>
+  </div>
+
+  <!-- Zero-text Top-Right Mute Toggle Button -->
+  <button id="mute-btn" type="button" aria-label="Audio">
+    <svg id="icon-sound-on" viewBox="0 0 24 24">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#00f0ff" stroke="none"></polygon>
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+    </svg>
+    <svg id="icon-sound-off" viewBox="0 0 24 24" style="display: none;">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="rgba(255,255,255,0.4)" stroke="none"></polygon>
+      <line x1="23" y1="9" x2="17" y2="15"></line>
+      <line x1="17" y1="9" x2="23" y2="15"></line>
+    </svg>
+  </button>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // =========================================================================
+      // 1. WEB AUDIO API RETRO-ARCADE SYNTHESIZER
+      // =========================================================================
+      class ArcadeAudio {
+        constructor() {
+          this.ctx = null;
+          this.muted = false;
+          this.chimeStep = 0;
+          this.lastBeatTime = 0;
+          this.beatIndex = 0;
+        }
+
+        ensureContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        toggleMute() {
+          this.muted = !this.muted;
+          return this.muted;
+        }
+
+        // Crisp high-tech snap sound on lane switch
+        playSnap(toOuter) {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'triangle';
+          const startFreq = toOuter ? 420 : 620;
+          const endFreq = toOuter ? 880 : 340;
+          osc.frequency.setValueAtTime(startFreq, now);
+          osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.055);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.18, now + 0.006);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.07);
+        }
+
+        // Bright pitch-ascending synth chime on collecting gold shard
+        playShard() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const scale = [587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98];
+          const freq = scale[this.chimeStep % scale.length];
+          this.chimeStep++;
+
+          const now = this.ctx.currentTime;
+
+          // Primary bell tone
+          const osc1 = this.ctx.createOscillator();
+          const gain1 = this.ctx.createGain();
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(freq, now);
+          osc1.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.09);
+
+          gain1.gain.setValueAtTime(0.001, now);
+          gain1.gain.linearRampToValueAtTime(0.16, now + 0.008);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+          osc1.connect(gain1);
+          gain1.connect(this.ctx.destination);
+          osc1.start(now);
+          osc1.stop(now + 0.23);
+
+          // Harmonic sparkle
+          const osc2 = this.ctx.createOscillator();
+          const gain2 = this.ctx.createGain();
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(freq * 2, now + 0.03);
+          gain2.gain.setValueAtTime(0.001, now + 0.03);
+          gain2.gain.linearRampToValueAtTime(0.08, now + 0.04);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+          osc2.connect(gain2);
+          gain2.connect(this.ctx.destination);
+          osc2.start(now + 0.03);
+          osc2.stop(now + 0.19);
+        }
+
+        // Subtle speed-up pulse sweep every 10 points
+        playLevelUp() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(280, now);
+          osc.frequency.exponentialRampToValueAtTime(1120, now + 0.24);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+
+        // Punchy low synth crash + noise burst on collision
+        playCrash() {
+          if (this.muted) return;
+          this.ensureContext();
+          if (!this.ctx) return;
+
+          const now = this.ctx.currentTime;
+
+          // Low sub drop
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(170, now);
+          osc.frequency.exponentialRampToValueAtTime(34, now + 0.32);
+
+          gain.gain.setValueAtTime(0.26, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.35);
+
+          // Filtered noise crunch
+          const bufferSize = Math.floor(this.ctx.sampleRate * 0.22);
+          const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+          }
+
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = noiseBuffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(1200, now);
+          filter.frequency.exponentialRampToValueAtTime(180, now + 0.22);
+
+          const nGain = this.ctx.createGain();
+          nGain.gain.setValueAtTime(0.22, now);
+          nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+          noise.connect(filter);
+          filter.connect(nGain);
+          nGain.connect(this.ctx.destination);
+          noise.start(now);
+        }
+
+        // Subtle rhythmic synth pulse driven by game speed
+        updateBeat(elapsedSec, speedRatio) {
+          if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+          const beatInterval = Math.max(0.21, 0.42 - speedRatio * 0.16);
+          if (elapsedSec - this.lastBeatTime >= beatInterval) {
+            this.lastBeatTime = elapsedSec;
+            const now = this.ctx.currentTime;
+            const isDownbeat = (this.beatIndex % 4 === 0);
+            this.beatIndex++;
+
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            const freq = isDownbeat ? 82 : 62;
+            osc.frequency.setValueAtTime(freq * 1.4, now);
+            osc.frequency.exponentialRampToValueAtTime(freq * 0.6, now + 0.08);
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(isDownbeat ? 0.09 : 0.055, now + 0.006);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+          }
+        }
+      }
+
+      // =========================================================================
+      // 2. CANVAS & GAME STATE SETUP
+      // =========================================================================
+      const canvas = document.getElementById('game-canvas');
+      const ctx = canvas.getContext('2d');
+      const bestScoreEl = document.getElementById('best-score-num');
+      const muteBtn = document.getElementById('mute-btn');
+      const iconSoundOn = document.getElementById('icon-sound-on');
+      const iconSoundOff = document.getElementById('icon-sound-off');
+
+      const audio = new ArcadeAudio();
+
+      // Dynamic accent hues shifted every 10 points (hazards remain hot magenta, shards gold)
+      const ACCENT_HUES = [188, 205, 168, 255, 195, 148, 280];
+
+      const STATE = {
+        START: 'START',
+        PLAYING: 'PLAYING',
+        GAMEOVER: 'GAMEOVER'
+      };
+
+      const STORAGE_KEY = 'orbit_snap_best_v1';
+
+      const game = {
+        mode: STATE.START,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        cx: window.innerWidth / 2,
+        cy: window.innerHeight / 2,
+        innerR: 100,
+        outerR: 165,
+        coreR: 56,
+        orbRadius: 10,
+
+        score: 0,
+        bestScore: 0,
+        tier: 0,
+
+        // Player orbital state
+        lane: 1, // 0 = inner, 1 = outer
+        angle: -Math.PI / 2,
+        currentR: 165,
+        angularSpeed: 2.35, // radians / sec
+        trail: [],
+
+        // Spawning & entities
+        nextSpawnAngle: 0,
+        lastObstacleLane: 1,
+        sameLaneCount: 0,
+        obstacles: [],
+        shards: [],
+        particles: [],
+        snapFlashes: [],
+
+        // Juice / feedback timers
+        time: 0,
+        gameOverTime: 0,
+        shakeMag: 0,
+        redFlash: 0,
+        levelPulse: 0,
+        corePulse: 0,
+        currentHue: ACCENT_HUES[0],
+        targetHue: ACCENT_HUES[0]
+      };
+
+      // Load persisted best score safely
+      try {
+        const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+        if (!isNaN(saved) && saved > 0) {
+          game.bestScore = saved;
+          bestScoreEl.textContent = String(saved);
+        }
+      } catch (_) {}
+
+      // =========================================================================
+      // 3. HIGH-DPI RESIZE HANDLING
+      // =========================================================================
+      function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        game.width = window.innerWidth;
+        game.height = window.innerHeight;
+        canvas.width = Math.floor(game.width * dpr);
+        canvas.height = Math.floor(game.height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        game.cx = game.width / 2;
+        game.cy = game.height / 2;
+        const minDim = Math.min(game.width, game.height);
+        game.outerR = minDim * 0.375;
+        game.innerR = minDim * 0.235;
+        game.coreR = minDim * 0.135;
+        game.orbRadius = Math.max(7.5, Math.min(13, minDim * 0.022));
+
+        if (game.mode === STATE.START) {
+          game.currentR = game.lane === 0 ? game.innerR : game.outerR;
+        }
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+
+      // =========================================================================
+      // 4. GAMEPLAY LIFECYCLE & FAIR SPAWNING
+      // =========================================================================
+      function startRun() {
+        audio.ensureContext();
+        audio.chimeStep = 0;
+        audio.beatIndex = 0;
+        audio.lastBeatTime = game.time;
+
+        game.mode = STATE.PLAYING;
+        game.score = 0;
+        game.tier = 0;
+        game.targetHue = ACCENT_HUES[0];
+        game.lane = 1;
+        game.currentR = game.outerR;
+        game.angle = -Math.PI / 2;
+        game.angularSpeed = 2.4;
+        game.trail = [];
+        game.obstacles = [];
+        game.shards = [];
+        game.particles = [];
+        game.snapFlashes = [];
+        game.shakeMag = 0;
+        game.redFlash = 0;
+        game.levelPulse = 0.6;
+        game.corePulse = 1.0;
+
+        game.lastObstacleLane = 1;
+        game.sameLaneCount = 0;
+        // First obstacle spawns comfortably ahead (~115 degrees)
+        game.nextSpawnAngle = game.angle + 2.0;
+
+        audio.playSnap(true);
+        fillHorizon();
+      }
+
+      function addScore(points) {
+        game.score += points;
+        game.corePulse = 1.0;
+
+        if (game.score > game.bestScore) {
+          game.bestScore = game.score;
+          bestScoreEl.textContent = String(game.bestScore);
+          try {
+            localStorage.setItem(STORAGE_KEY, String(game.bestScore));
+          } catch (_) {}
+        }
+
+        const newTier = Math.floor(game.score / 10);
+        if (newTier > game.tier) {
+          game.tier = newTier;
+          game.levelPulse = 1.0;
+          game.targetHue = ACCENT_HUES[newTier % ACCENT_HUES.length];
+          audio.playLevelUp();
+        }
+      }
+
+      function computeTargetSpeed() {
+        // Starts brisk (2.4 rad/s), smoothly ramps up to thrilling ~4.45 rad/s
+        return 2.4 + Math.min(2.05, game.score * 0.032 + Math.sqrt(game.score) * 0.11);
+      }
+
+      function fillHorizon() {
+        const horizon = game.angle + Math.PI * 1.65;
+        while (game.nextSpawnAngle < horizon) {
+          spawnNextPattern();
+        }
+      }
+
+      function spawnNextPattern() {
+        const speed = computeTargetSpeed();
+
+        // Choose lane fairly (avoid boringly long streaks on the same ring)
+        let lane;
+        if (game.sameLaneCount >= 2) {
+          lane = 1 - game.lastObstacleLane;
+        } else {
+          lane = Math.random() < 0.56 ? (1 - game.lastObstacleLane) : game.lastObstacleLane;
+        }
+
+        if (lane === game.lastObstacleLane) {
+          game.sameLaneCount++;
+        } else {
+          game.sameLaneCount = 1;
+        }
+
+        // Obstacle angular half-width (inner ring slightly wider in radians for visual parity)
+        const baseArc = lane === 0 ? 0.115 : 0.088;
+        const arcHalf = baseArc + Math.random() * 0.03;
+
+        const obsAngle = game.nextSpawnAngle;
+        game.obstacles.push({
+          angle: obsAngle,
+          lane: lane,
+          arcHalf: arcHalf,
+          passed: false,
+          spawnAnim: 0
+        });
+
+        // Spawn a gold diamond shard on the safe opposite ring (~65% chance)
+        const safeLane = 1 - lane;
+        if (Math.random() < 0.68) {
+          game.shards.push({
+            angle: obsAngle + (Math.random() - 0.5) * 0.06,
+            lane: safeLane,
+            collected: false,
+            pulseOffset: Math.random() * Math.PI * 2
+          });
+        }
+
+        game.lastObstacleLane = lane;
+
+        // Guarantee fair reaction time:
+        // At least 0.39s reaction time when switching, scaling nicely with speed
+        const minTimeGap = Math.max(0.36, 0.54 - game.score * 0.0028);
+        const maxTimeGap = Math.max(0.54, 0.80 - game.score * 0.0032);
+        const timeGap = minTimeGap + Math.random() * (maxTimeGap - minTimeGap);
+        const angleGap = Math.max(0.88, speed * timeGap);
+
+        game.nextSpawnAngle += angleGap;
+      }
+
+      function switchLane() {
+        if (game.mode !== STATE.PLAYING) return;
+
+        const prevR = game.currentR;
+        game.lane = 1 - game.lane;
+        const nextR = game.lane === 0 ? game.innerR : game.outerR;
+
+        audio.playSnap(game.lane === 1);
+
+        // Snap flash radial beam effect
+        game.snapFlashes.push({
+          angle: game.angle,
+          r1: prevR,
+          r2: nextR,
+          life: 1.0
+        });
+
+        // Crisp spark particles at switch point
+        const px = game.cx + Math.cos(game.angle) * prevR;
+        const py = game.cy + Math.sin(game.angle) * prevR;
+        spawnParticles(px, py, `hsl(${game.currentHue}, 100%, 65%)`, 8, 90, 210);
+      }
+
+      function triggerGameOver() {
+        game.mode = STATE.GAMEOVER;
+        game.gameOverTime = 0;
+        game.shakeMag = 16;
+        game.redFlash = 0.85;
+        audio.playCrash();
+
+        const px = game.cx + Math.cos(game.angle) * game.currentR;
+        const py = game.cy + Math.sin(game.angle) * game.currentR;
+        spawnParticles(px, py, '#ff2a70', 26, 120, 420);
+        spawnParticles(px, py, '#00f0ff', 18, 90, 320);
+        spawnParticles(px, py, '#ffffff', 10, 60, 200);
+      }
+
+      function spawnParticles(x, y, color, count, minSpeed, maxSpeed) {
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = minSpeed + Math.random() * (maxSpeed - minSpeed);
+          game.particles.push({
+            x,
+            y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            size: 2 + Math.random() * 3.8,
+            color,
+            life: 1.0,
+            decay: 1.8 + Math.random() * 1.4
+          });
+        }
+      }
+
+      // =========================================================================
+      // 5. INPUT HANDLING (1-BUTTON ZERO-LATENCY)
+      // =========================================================================
+      function handlePrimaryAction() {
+        if (game.mode === STATE.START) {
+          startRun();
+        } else if (game.mode === STATE.PLAYING) {
+          switchLane();
+        } else if (game.mode === STATE.GAMEOVER && game.gameOverTime >= 0.35) {
+          startRun();
+        }
+      }
+
+      // Unified pointerdown handles both mouse & touch instantaneously without 300ms delay
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.button && e.button !== 0) return;
+        e.preventDefault();
+        handlePrimaryAction();
+      }, { passive: false });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.repeat) return;
+        if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'KeyW' || e.code === 'KeyS') {
+          e.preventDefault();
+          handlePrimaryAction();
+        }
+      });
+
+      muteBtn.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+      });
+
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isMuted = audio.toggleMute();
+        muteBtn.classList.toggle('muted', isMuted);
+        iconSoundOn.style.display = isMuted ? 'none' : 'block';
+        iconSoundOff.style.display = isMuted ? 'block' : 'none';
+      });
+
+      // =========================================================================
+      // 6. UPDATE LOOP
+      // =========================================================================
+      function update(dt) {
+        game.time += dt;
+
+        // Smooth hue shift every 10 points
+        game.currentHue += (game.targetHue - game.currentHue) * Math.min(1, dt * 3.5);
+
+        // Decay visual feedback timers
+        if (game.shakeMag > 0) game.shakeMag = Math.max(0, game.shakeMag - dt * 42);
+        if (game.redFlash > 0) game.redFlash = Math.max(0, game.redFlash - dt * 2.8);
+        if (game.levelPulse > 0) game.levelPulse = Math.max(0, game.levelPulse - dt * 1.45);
+        if (game.corePulse > 0) game.corePulse = Math.max(0, game.corePulse - dt * 4.5);
+
+        // Update snap flashes
+        for (let i = game.snapFlashes.length - 1; i >= 0; i--) {
+          game.snapFlashes[i].life -= dt * 6.5;
+          if (game.snapFlashes[i].life <= 0) game.snapFlashes.splice(i, 1);
+        }
+
+        // Update particles
+        for (let i = game.particles.length - 1; i >= 0; i--) {
+          const p = game.particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= Math.pow(0.08, dt);
+          p.vy *= Math.pow(0.08, dt);
+          p.life -= p.decay * dt;
+          if (p.life <= 0) game.particles.splice(i, 1);
+        }
+
+        if (game.mode === STATE.START) {
+          // Gentle ambient orbit on title screen
+          game.angle += 1.05 * dt;
+          game.currentR = game.outerR;
+          recordTrail();
+          return;
+        }
+
+        if (game.mode === STATE.GAMEOVER) {
+          game.gameOverTime += dt;
+          return;
+        }
+
+        // PLAYING STATE
+        const targetSpeed = computeTargetSpeed();
+        game.angularSpeed += (targetSpeed - game.angularSpeed) * Math.min(1, dt * 5);
+        game.angle += game.angularSpeed * dt;
+
+        // Rhythmic synth pulse
+        const speedRatio = Math.min(1, (game.angularSpeed - 2.4) / 2.0);
+        audio.updateBeat(game.time, speedRatio);
+
+        // Ultra-snappy radial interpolation
+        const targetR = game.lane === 0 ? game.innerR : game.outerR;
+        game.currentR += (targetR - game.currentR) * (1 - Math.exp(-34 * dt));
+
+        recordTrail();
+        fillHorizon();
+
+        const orbAngRadius = game.orbRadius / Math.max(1, game.currentR);
+
+        // Update obstacles & check collisions
+        for (let i = game.obstacles.length - 1; i >= 0; i--) {
+          const obs = game.obstacles[i];
+          obs.spawnAnim = Math.min(1, obs.spawnAnim + dt * 5.5);
+
+          const obsR = obs.lane === 0 ? game.innerR : game.outerR;
+          const dAng = game.angle - obs.angle;
+
+          // Forgiving collision window for crisp arcade feel
+          const hitAngWindow = obs.arcHalf + orbAngRadius * 0.55;
+          const radialDist = Math.abs(game.currentR - obsR);
+
+          if (Math.abs(dAng) < hitAngWindow && radialDist < game.orbRadius * 1.15) {
+            triggerGameOver();
+            return;
+          }
+
+          // Score +1 when safely clearing an obstacle
+          if (!obs.passed && dAng > obs.arcHalf + orbAngRadius * 0.5) {
+            obs.passed = true;
+            addScore(1);
+          }
+
+          // Prune far-behind obstacles
+          if (dAng > Math.PI * 0.85) {
+            game.obstacles.splice(i, 1);
+          }
+        }
+
+        // Update gold shards & check collection
+        for (let i = game.shards.length - 1; i >= 0; i--) {
+          const sh = game.shards[i];
+          const shR = sh.lane === 0 ? game.innerR : game.outerR;
+          const dAng = game.angle - sh.angle;
+
+          if (!sh.collected) {
+            const collectWindow = 0.085 + orbAngRadius;
+            const radialDist = Math.abs(game.currentR - shR);
+            if (Math.abs(dAng) < collectWindow && radialDist < game.orbRadius * 2.1) {
+              sh.collected = true;
+              addScore(2);
+              audio.playShard();
+              const sx = game.cx + Math.cos(sh.angle) * shR;
+              const sy = game.cy + Math.sin(sh.angle) * shR;
+              spawnParticles(sx, sy, '#ffd740', 14, 90, 260);
+              spawnParticles(sx, sy, '#ffffff', 6, 50, 150);
+            }
+          }
+
+          if (sh.collected || dAng > Math.PI * 0.6) {
+            game.shards.splice(i, 1);
+          }
+        }
+      }
+
+      function recordTrail() {
+        const px = game.cx + Math.cos(game.angle) * game.currentR;
+        const py = game.cy + Math.sin(game.angle) * game.currentR;
+        game.trail.push({ x: px, y: py });
+        const maxLen = game.mode === STATE.PLAYING ? 22 : 16;
+        while (game.trail.length > maxLen) {
+          game.trail.shift();
+        }
+      }
+
+      // =========================================================================
+      // 7. RENDERING ENGINE
+      // =========================================================================
+      function render() {
+        const w = game.width;
+        const h = game.height;
+        const cx = game.cx;
+        const cy = game.cy;
+        const hue = game.currentHue;
+
+        // Clear dark arcade background
+        ctx.fillStyle = '#090a0f';
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.save();
+
+        // Screen shake offset
+        if (game.shakeMag > 0.2) {
+          const sx = (Math.random() - 0.5) * 2 * game.shakeMag;
+          const sy = (Math.random() - 0.5) * 2 * game.shakeMag;
+          ctx.translate(sx, sy);
+        }
+
+        // 1. Faint pulsing radial grid & level-up shockwave
+        drawRadialGrid(cx, cy, hue);
+
+        // 2. Concentric circular tracks (INNER & OUTER rings)
+        drawTracks(cx, cy, hue);
+
+        // 3. Snap flash beams
+        drawSnapFlashes(cx, cy, hue);
+
+        // 4. Gold diamond shards
+        drawShards(cx, cy);
+
+        // 5. Glowing magenta/red spike barriers
+        drawObstacles(cx, cy);
+
+        // 6. Player orb & glowing trail (hidden after shatter on game over)
+        if (game.mode !== STATE.GAMEOVER) {
+          drawPlayer(cx, cy, hue);
+        }
+
+        // 7. Central geometric core & zero-text icon/score display
+        drawCenterCore(cx, cy, hue);
+
+        // 8. Impact & collection particles
+        drawParticles();
+
+        ctx.restore();
+
+        // 9. Brief red collision flash overlay
+        if (game.redFlash > 0.01) {
+          ctx.fillStyle = `rgba(255, 30, 86, ${game.redFlash * 0.35})`;
+          ctx.fillRect(0, 0, w, h);
+        }
+      }
+
+      function drawRadialGrid(cx, cy, hue) {
+        const maxR = Math.hypot(game.width, game.height) * 0.55;
+        const beatPulse = 0.03 + Math.sin(game.time * 4) * 0.012 + game.levelPulse * 0.08;
+
+        ctx.save();
+        ctx.strokeStyle = `hsla(${hue}, 90%, 60%, ${beatPulse})`;
+        ctx.lineWidth = 1;
+
+        // Spokes
+        const spokes = 12;
+        const rotOffset = game.time * 0.08;
+        for (let i = 0; i < spokes; i++) {
+          const a = (i / spokes) * Math.PI * 2 + rotOffset;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * game.coreR, cy + Math.sin(a) * game.coreR);
+          ctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+          ctx.stroke();
+        }
+
+        // Concentric faint rings
+        for (let r = game.outerR * 1.3; r < maxR; r += game.outerR * 0.32) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        // Expanding speed-up shockwave ring every 10 points
+        if (game.levelPulse > 0.01) {
+          const waveR = game.coreR + (1 - game.levelPulse) * maxR * 0.85;
+          ctx.beginPath();
+          ctx.arc(cx, cy, waveR, 0, Math.PI * 2);
+          ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${game.levelPulse * 0.55})`;
+          ctx.lineWidth = 3 + game.levelPulse * 6;
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      function drawTracks(cx, cy, hue) {
+        const tracks = [
+          { r: game.innerR, active: game.lane === 0 && game.mode === STATE.PLAYING },
+          { r: game.outerR, active: game.lane === 1 && game.mode === STATE.PLAYING }
+        ];
+
+        ctx.save();
+        for (const t of tracks) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, t.r, 0, Math.PI * 2);
+          ctx.strokeStyle = t.active
+            ? `hsla(${hue}, 100%, 65%, 0.42)`
+            : `hsla(${hue}, 70%, 55%, 0.16)`;
+          ctx.lineWidth = t.active ? 2.5 : 1.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawSnapFlashes(cx, cy, hue) {
+        if (game.snapFlashes.length === 0) return;
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (const f of game.snapFlashes) {
+          const x1 = cx + Math.cos(f.angle) * f.r1;
+          const y1 = cy + Math.sin(f.angle) * f.r1;
+          const x2 = cx + Math.cos(f.angle) * f.r2;
+          const y2 = cy + Math.sin(f.angle) * f.r2;
+
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = `hsla(${hue}, 100%, 75%, ${f.life * 0.85})`;
+          ctx.lineWidth = 4 * f.life;
+          ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+          ctx.shadowBlur = 14;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawObstacles(cx, cy) {
+        ctx.save();
+        for (const obs of game.obstacles) {
+          const r = obs.lane === 0 ? game.innerR : game.outerR;
+          const scale = obs.spawnAnim;
+          const half = obs.arcHalf * scale;
+          const startA = obs.angle - half;
+          const endA = obs.angle + half;
+
+          // Outer glow arc barrier
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, startA, endA);
+          ctx.strokeStyle = '#ff1f6b';
+          ctx.lineWidth = (game.orbRadius * 1.15) * scale;
+          ctx.lineCap = 'round';
+          ctx.shadowColor = '#ff1f6b';
+          ctx.shadowBlur = 18;
+          ctx.stroke();
+
+          // Hot white-pink core line
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, startA, endA);
+          ctx.strokeStyle = '#ffd6e6';
+          ctx.lineWidth = (game.orbRadius * 0.36) * scale;
+          ctx.shadowBlur = 0;
+          ctx.stroke();
+
+          // Sharp geometric neon spikes pointing outward & inward from the barrier center
+          const spikeLen = game.orbRadius * 1.35 * scale;
+          const dir = obs.lane === 1 ? 1 : -1;
+          const tipR = r + dir * spikeLen;
+          const baseOffset = half * 0.55;
+
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(obs.angle) * tipR, cy + Math.sin(obs.angle) * tipR);
+          ctx.lineTo(cx + Math.cos(obs.angle - baseOffset) * r, cy + Math.sin(obs.angle - baseOffset) * r);
+          ctx.lineTo(cx + Math.cos(obs.angle + baseOffset) * r, cy + Math.sin(obs.angle + baseOffset) * r);
+          ctx.closePath();
+          ctx.fillStyle = '#ff2a78';
+          ctx.shadowColor = '#ff1f6b';
+          ctx.shadowBlur = 12;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawShards(cx, cy) {
+        ctx.save();
+        for (const sh of game.shards) {
+          if (sh.collected) continue;
+          const r = sh.lane === 0 ? game.innerR : game.outerR;
+          const sx = cx + Math.cos(sh.angle) * r;
+          const sy = cy + Math.sin(sh.angle) * r;
+          const pulse = 1 + Math.sin(game.time * 8 + sh.pulseOffset) * 0.16;
+          const size = game.orbRadius * 0.95 * pulse;
+
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(sh.angle + Math.PI / 4);
+
+          ctx.beginPath();
+          ctx.moveTo(0, -size);
+          ctx.lineTo(size * 0.72, 0);
+          ctx.lineTo(0, size);
+          ctx.lineTo(-size * 0.72, 0);
+          ctx.closePath();
+
+          ctx.fillStyle = '#ffd740';
+          ctx.shadowColor = '#ffb300';
+          ctx.shadowBlur = 16;
+          ctx.fill();
+
+          // Bright white inner glint
+          ctx.beginPath();
+          ctx.moveTo(0, -size * 0.45);
+          ctx.lineTo(size * 0.32, 0);
+          ctx.lineTo(0, size * 0.45);
+          ctx.lineTo(-size * 0.32, 0);
+          ctx.closePath();
+          ctx.fillStyle = '#fff9db';
+          ctx.shadowBlur = 0;
+          ctx.fill();
+
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      function drawPlayer(cx, cy, hue) {
+        const px = cx + Math.cos(game.angle) * game.currentR;
+        const py = cy + Math.sin(game.angle) * game.currentR;
+
+        // Smooth glowing tapered trail
+        if (game.trail.length > 1) {
+          ctx.save();
+          ctx.lineCap = 'round';
+          for (let i = 1; i < game.trail.length; i++) {
+            const t = i / game.trail.length;
+            ctx.beginPath();
+            ctx.moveTo(game.trail[i - 1].x, game.trail[i - 1].y);
+            ctx.lineTo(game.trail[i].x, game.trail[i].y);
+            ctx.strokeStyle = `hsla(${hue}, 100%, 62%, ${t * 0.65})`;
+            ctx.lineWidth = game.orbRadius * 1.55 * t;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // Main glowing cyan orb
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, game.orbRadius, 0, Math.PI * 2);
+        ctx.fillStyle = `hsl(${hue}, 100%, 62%)`;
+        ctx.shadowColor = `hsl(${hue}, 100%, 55%)`;
+        ctx.shadowBlur = 22;
+        ctx.fill();
+
+        // Crisp white hot core
+        ctx.beginPath();
+        ctx.arc(px, py, game.orbRadius * 0.48, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 0;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawCenterCore(cx, cy, hue) {
+        const r = game.coreR * (1 + game.corePulse * 0.07);
+
+        ctx.save();
+
+        // Rotating outer geometric octagon frame
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(game.time * (game.mode === STATE.PLAYING ? 0.55 : 0.25));
+        ctx.beginPath();
+        const sides = 8;
+        for (let i = 0; i < sides; i++) {
+          const a = (i / sides) * Math.PI * 2;
+          const x = Math.cos(a) * (r + 7);
+          const y = Math.sin(a) * (r + 7);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = game.mode === STATE.GAMEOVER
+          ? 'rgba(255, 42, 112, 0.55)'
+          : `hsla(${hue}, 100%, 65%, 0.35)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+
+        // Core filled circle
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#0e111b';
+        ctx.fill();
+        ctx.strokeStyle = game.mode === STATE.GAMEOVER
+          ? '#ff2a70'
+          : `hsl(${hue}, 100%, 60%)`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = game.mode === STATE.GAMEOVER
+          ? '#ff2a70'
+          : `hsl(${hue}, 100%, 55%)`;
+        ctx.shadowBlur = 18;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // ZERO-TEXT CENTER DISPLAY
+        if (game.mode === STATE.START) {
+          // Clean glowing Play Triangle Icon (▶)
+          const pulse = 1 + Math.sin(game.time * 4.5) * 0.08;
+          const s = r * 0.44 * pulse;
+          ctx.beginPath();
+          ctx.moveTo(cx - s * 0.65, cy - s * 0.85);
+          ctx.lineTo(cx + s * 0.95, cy);
+          ctx.lineTo(cx - s * 0.65, cy + s * 0.85);
+          ctx.closePath();
+          ctx.fillStyle = `hsl(${hue}, 100%, 65%)`;
+          ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+          ctx.shadowBlur = 18;
+          ctx.fill();
+        } else if (game.mode === STATE.PLAYING) {
+          // Large crisp numeric score inside the central core
+          const fontSize = Math.round(r * 0.88);
+          ctx.font = `800 ${fontSize}px 'Segoe UI', system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = `hsla(${hue}, 100%, 65%, 0.7)`;
+          ctx.shadowBlur = 12;
+          ctx.fillText(String(game.score), cx, cy + 2);
+        } else if (game.mode === STATE.GAMEOVER && game.gameOverTime >= 0.35) {
+          // Pulsing Replay Icon (↻) inside core + numeric score above & crown+best below
+          const fade = Math.min(1, (game.gameOverTime - 0.35) / 0.18);
+          ctx.globalAlpha = fade;
+
+          // Pulsing circular replay arrow
+          const pulse = 1 + Math.sin(game.time * 6) * 0.07;
+          const iconR = r * 0.36 * pulse;
+          ctx.beginPath();
+          ctx.arc(cx, cy, iconR, -Math.PI * 0.65, Math.PI * 1.15);
+          ctx.strokeStyle = '#00f0ff';
+          ctx.lineWidth = Math.max(3.5, r * 0.085);
+          ctx.lineCap = 'round';
+          ctx.shadowColor = '#00f0ff';
+          ctx.shadowBlur = 16;
+          ctx.stroke();
+
+          // Arrowhead
+          const tipAngle = -Math.PI * 0.65;
+          const ax = cx + Math.cos(tipAngle) * iconR;
+          const ay = cy + Math.sin(tipAngle) * iconR;
+          const ah = iconR * 0.45;
+          ctx.beginPath();
+          ctx.moveTo(ax - ah * 0.2, ay - ah * 0.85);
+          ctx.lineTo(ax + ah * 0.85, ay + ah * 0.15);
+          ctx.lineTo(ax - ah * 0.45, ay + ah * 0.55);
+          ctx.closePath();
+          ctx.fillStyle = '#00f0ff';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Final score number cleanly above the core
+          const scoreY = cy - r - Math.max(32, r * 0.52);
+          ctx.font = `900 ${Math.round(r * 0.78)}px 'Segoe UI', system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(255, 255, 255, 0.45)';
+          ctx.shadowBlur = 12;
+          ctx.fillText(String(game.score), cx, scoreY);
+
+          // Best score with crown icon cleanly below the core
+          const bestY = cy + r + Math.max(30, r * 0.48);
+          const bestFont = Math.round(r * 0.44);
+          ctx.font = `800 ${bestFont}px 'Segoe UI', system-ui, sans-serif`;
+          const bestText = String(game.bestScore);
+          const textW = ctx.measureText(bestText).width;
+          const crownSize = bestFont * 0.85;
+          const totalW = crownSize + 8 + textW;
+          const startX = cx - totalW / 2;
+
+          // Draw mini vector crown
+          drawCrown(startX + crownSize / 2, bestY, crownSize * 0.55);
+
+          ctx.textAlign = 'left';
+          ctx.fillStyle = '#ffd740';
+          ctx.shadowColor = 'rgba(255, 215, 64, 0.5)';
+          ctx.shadowBlur = 10;
+          ctx.fillText(bestText, startX + crownSize + 8, bestY + 1);
+        }
+
+        ctx.restore();
+      }
+
+      function drawCrown(x, y, s) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.fillStyle = '#ffd740';
+        ctx.shadowColor = 'rgba(255, 215, 64, 0.65)';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(-s, s * 0.65);
+        ctx.lineTo(-s * 1.05, -s * 0.55);
+        ctx.lineTo(-s * 0.42, s * 0.05);
+        ctx.lineTo(0, -s * 0.78);
+        ctx.lineTo(s * 0.42, s * 0.05);
+        ctx.lineTo(s * 1.05, -s * 0.55);
+        ctx.lineTo(s, s * 0.65);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawParticles() {
+        if (game.particles.length === 0) return;
+        ctx.save();
+        for (const p of game.particles) {
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // =========================================================================
+      // 8. MAIN ANIMATION LOOP
+      // =========================================================================
+      let lastTimestamp = 0;
+
+      function loop(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+        lastTimestamp = timestamp;
+
+        update(dt);
+        render();
+        requestAnimationFrame(loop);
+      }
+
+      window.onload = () => {
+        resizeCanvas();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>
