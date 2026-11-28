@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOON JUMP - 月まで跳べ</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b0e17;
+    color: #e2e8f0;
+    font-family: monospace, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    user-select: none;
+  }
+  canvas {
+    border: 2px solid #334155;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+    background: #87ceeb;
+    display: block;
+  }
+  .controls {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #94a3b8;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="480" height="640"></canvas>
+<div class="controls">移動: ← → (または A / D) ｜ ジャンプ: Space / ↑ / W ｜ リセット: R</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // 定数
+  const GRAVITY = 0.48;
+  const JUMP_POWER = -12.6;
+  const MOVE_SPEED = 4.8;
+  const PIXELS_PER_METER = 10;
+  const GOAL_METERS = 1000;
+  const GOAL_Y = -GOAL_METERS * PIXELS_PER_METER; // y=0が地上、上がマイナス
+
+  // キー入力
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+      e.preventDefault();
+    }
+    if (e.code === 'KeyR') initGame();
+    if (state === 'ending' && (e.code === 'Space' || e.code === 'Enter')) {
+      initGame();
+    }
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.code] = false;
+  });
+
+  // ゲーム状態
+  let state = 'playing'; // 'playing' | 'ending'
+  let player, platforms, stars, cameraY, maxAltitude, maxFall, fallStartAlt, startTime, clearTime, frameCount;
+
+  // 高度に応じたゾーン判定
+  function getZone(meters) {
+    if (meters < 250) return { id: 'building', name: 'ビル街' };
+    if (meters < 500) return { id: 'heli', name: 'ヘリコプター空域' };
+    if (meters < 750) return { id: 'cloud', name: '雲の上' };
+    if (meters < 1000) return { id: 'rocket', name: '成層圏・ロケット' };
+    return { id: 'moon', name: '月面' };
+  }
+
+  // 足場生成（必ず届く間隔で配置）
+  function generatePlatforms() {
+    const list = [];
+    // 地上
+    list.push({
+      x: 0, y: 0, w: W, h: 40,
+      type: 'ground', vx: 0, vy: 0, baseX: 0, baseY: 0, range: 0
+    });
+
+    let currentY = -95;
+    let prevCenterX = W / 2;
+
+    while (currentY > GOAL_Y + 90) {
+      const meters = -currentY / PIXELS_PER_METER;
+      const zone = getZone(meters).id;
+
+      let w = 96;
+      let h = 18;
+      let vx = 0;
+      let range = 0;
+
+      if (zone === 'building') {
+        w = 88 + Math.random() * 40;
+        h = 22;
+      } else if (zone === 'heli') {
+        w = 84;
+        h = 18;
+        vx = (Math.random() < 0.5 ? 1 : -1) * (1.2 + Math.random() * 1.4);
+      } else if (zone === 'cloud') {
+        w = 90 + Math.random() * 30;
+        h = 20;
+        vx = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.6);
+      } else if (zone === 'rocket') {
+        w = 72;
+        h = 20;
+        vx = (Math.random() < 0.5 ? 1 : -1) * (1.6 + Math.random() * 1.4);
+      }
+
+      // 前の足場から水平に届きやすい範囲に配置
+      const maxOffset = 185;
+      let minX = Math.max(16, prevCenterX - maxOffset - w / 2);
+      let maxX = Math.min(W - w - 16, prevCenterX + maxOffset - w / 2);
+      if (minX > maxX) { minX = 16; maxX = W - w - 16; }
+      const x = minX + Math.random() * (maxX - minX);
+
+      list.push({
+        x, y: currentY, w, h,
+        type: zone,
+        vx,
+        phase: Math.random() * Math.PI * 2
+      });
+
+      prevCenterX = x + w / 2;
+      // 垂直間隔（最大ジャンプ約165pxに対し、90〜125pxで確実に届く）
+      currentY -= 92 + Math.random() * 34;
+    }
+
+    // 月（ゴール）
+    list.push({
+      x: 0, y: GOAL_Y, w: W, h: 60,
+      type: 'moon', vx: 0, phase: 0
+    });
+
+    return list;
+  }
+
+  function initGame() {
+    state = 'playing';
+    frameCount = 0;
+    player = {
+      x: W / 2 - 12,
+      y: -36,
+      w: 24,
+      h: 34,
+      vx: 0,
+      vy: 0,
+      onGround: false,
+      facing: 1,
+      ridingPlatform: null,
+      coyoteTimer: 0
+    };
+    platforms = generatePlatforms();
+    stars = Array.from({ length: 90 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.8 + 0.5,
+      twinkle: Math.random() * Math.PI * 2
+    }));
+    cameraY = -H + 120;
+    maxAltitude = 0;
+    maxFall = 0;
+    fallStartAlt = 0;
+    startTime = performance.now();
+    clearTime = 0;
+  }
+
+  // 色補間ユーティリティ
+  function lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+  function lerpColor(c1, c2, t) {
+    const r = Math.round(lerp(c1[0], c2[0], t));
+    const g = Math.round(lerp(c1[1], c2[1], t));
+    const b = Math.round(lerp(c1[2], c2[2], t));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function update() {
+    frameCount++;
+    if (state !== 'playing') return;
+
+    // 移動足場の更新
+    for (const p of platforms) {
+      if (p.vx !== 0) {
+        p.x += p.vx;
+        if (p.x < 10) { p.x = 10; p.vx *= -1; }
+        if (p.x + p.w > W - 10) { p.x = W - 10 - p.w; p.vx *= -1; }
+      }
+    }
+
+    // 乗っている足場の移動に追従
+    if (player.onGround && player.ridingPlatform) {
+      player.x += player.ridingPlatform.vx;
+    }
+
+    // 左右入力
+    let move = 0;
+    if (keys['ArrowLeft'] || keys['KeyA']) { move -= 1; player.facing = -1; }
+    if (keys['ArrowRight'] || keys['KeyD']) { move += 1; player.facing = 1; }
+    player.vx = move * MOVE_SPEED;
+    player.x += player.vx;
+
+    // 画面端の壁
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.w > W) player.x = W - player.w;
+
+    // コヨーテタイム（足場から離れた直後のジャンプ猶予）
+    if (player.onGround) {
+      player.coyoteTimer = 6;
+    } else if (player.coyoteTimer > 0) {
+      player.coyoteTimer--;
+    }
+
+    // ジャンプ入力
+    if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && player.coyoteTimer > 0) {
+      player.vy = JUMP_POWER;
+      player.onGround = false;
+      player.ridingPlatform = null;
+      player.coyoteTimer = 0;
+    }
+
+    // 重力と落下判定
+    const prevBottom = player.y + player.h;
+    player.vy = Math.min(player.vy + GRAVITY, 16);
+    player.y += player.vy;
+
+    const currentAlt = Math.max(0, Math.round(-(player.y + player.h) / PIXELS_PER_METER));
+    if (currentAlt > maxAltitude) maxAltitude = currentAlt;
+
+    // 落下距離計測
+    if (player.vy > 0 && fallStartAlt === 0 && !player.onGround) {
+      fallStartAlt = currentAlt;
+    }
+
+    player.onGround = false;
+    player.ridingPlatform = null;
+
+    // 足場との着地判定（下降中のみすり抜け床として機能）
+    if (player.vy >= 0) {
+      const currBottom = player.y + player.h;
+      for (const p of platforms) {
+        if (
+          player.x + player.w > p.x + 4 &&
+          player.x < p.x + p.w - 4 &&
+          prevBottom <= p.y + 8 &&
+          currBottom >= p.y
+        ) {
+          player.y = p.y - player.h;
+          player.vy = 0;
+          player.onGround = true;
+          player.ridingPlatform = p;
+
+          if (fallStartAlt > currentAlt) {
+            const fallen = fallStartAlt - currentAlt;
+            if (fallen > maxFall) maxFall = fallen;
+          }
+          fallStartAlt = 0;
+
+          // 月に到達したらエンディングへ
+          if (p.type === 'moon') {
+            state = 'ending';
+            clearTime = (performance.now() - startTime) / 1000;
+          }
+          break;
+        }
+      }
+    }
+
+    // カメラ追従（プレイヤーを画面下寄り〜中央に保つ）
+    const targetCamY = player.y - H * 0.58;
+    cameraY += (targetCamY - cameraY) * 0.12;
+    if (cameraY > -H + 80) cameraY = -H + 80;
+  }
+
+  // 背景描画（高度で空の色が宇宙へ変化）
+  function drawBackground(meters) {
+    let topColor, botColor;
+    if (meters < 400) {
+      const t = meters / 400;
+      topColor = lerpColor([70, 160, 235], [25, 95, 195], t);
+      botColor = lerpColor([170, 220, 250], [110, 180, 240], t);
+    } else if (meters < 800) {
+      const t = (meters - 400) / 400;
+      topColor = lerpColor([25, 95, 195], [8, 12, 32], t);
+      botColor = lerpColor([110, 180, 240], [20, 35, 80], t);
+    } else {
+      const t = (meters - 800) / 200;
+      topColor = lerpColor([8, 12, 32], [2, 4, 12], t);
+      botColor = lerpColor([20, 35, 80], [6, 10, 24], t);
+    }
+
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, topColor);
+    grad.addColorStop(1, botColor);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // 高度550m以上から星が見え始める
+    if (meters > 550) {
+      const alpha = Math.min(1, (meters - 550) / 250);
+      for (const s of stars) {
+        const tw = 0.5 + 0.5 * Math.sin(frameCount * 0.05 + s.twinkle);
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * (0.4 + 0.6 * tw)})`;
+        ctx.beginPath();
+        ctx.arc(s.x, (s.y - cameraY * 0.08) % H, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // 足場描画
+  function drawPlatform(p, screenY) {
+    if (p.type === 'ground') {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(p.x, screenY, p.w, 120);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(p.x, screenY, p.w, 6);
+      return;
+    }
+
+    if (p.type === 'building') {
+      // ビルの屋上と外壁
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(p.x, screenY, p.w, p.h + 18);
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(p.x - 2, screenY, p.w + 4, 5);
+      // 窓
+      ctx.fillStyle = '#fde047';
+      for (let wx = p.x + 8; wx < p.x + p.w - 10; wx += 16) {
+        ctx.fillRect(wx, screenY + 10, 8, 10);
+      }
+      return;
+    }
+
+    if (p.type === 'heli') {
+      // ヘリコプター本体
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.roundRect(p.x + 12, screenY + 4, p.w - 24, 16, 6);
+      ctx.fill();
+      // キャノピー
+      ctx.fillStyle = '#bae6fd';
+      const noseX = p.vx >= 0 ? p.x + p.w - 28 : p.x + 14;
+      ctx.fillRect(noseX, screenY + 7, 14, 8);
+      // テール
+      ctx.fillStyle = '#b91c1c';
+      const tailX = p.vx >= 0 ? p.x : p.x + p.w - 16;
+      ctx.fillRect(tailX, screenY + 10, 16, 4);
+      // ローター（回転アニメ）
+      const rotorW = (p.w * 0.45) * (0.4 + 0.6 * Math.abs(Math.sin(frameCount * 0.45)));
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(p.x + p.w / 2 - 2, screenY - 2, 4, 6);
+      ctx.fillRect(p.x + p.w / 2 - rotorW, screenY - 3, rotorW * 2, 3);
+      return;
+    }
+
+    if (p.type === 'cloud') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(p.x, screenY + 4, p.w, p.h - 2, 10);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(p.x + p.w * 0.28, screenY + 6, 13, 0, Math.PI * 2);
+      ctx.arc(p.x + p.w * 0.55, screenY + 3, 16, 0, Math.PI * 2);
+      ctx.arc(p.x + p.w * 0.78, screenY + 7, 11, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    if (p.type === 'rocket') {
+      // 横向き・ブースター型ロケット足場
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.roundRect(p.x + 6, screenY, p.w - 12, p.h, 6);
+      ctx.fill();
+      // 赤いノーズ/ライン
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(p.x + 14, screenY, 8, p.h);
+      ctx.fillRect(p.x + p.w - 22, screenY, 8, p.h);
+      // 噴射炎
+      const flame = 6 + Math.random() * 10;
+      ctx.fillStyle = '#f97316';
+      if (p.vx >= 0) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + 6, screenY + 4);
+        ctx.lineTo(p.x - flame, screenY + p.h / 2);
+        ctx.lineTo(p.x + 6, screenY + p.h - 4);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(p.x + p.w - 6, screenY + 4);
+        ctx.lineTo(p.x + p.w + flame, screenY + p.h / 2);
+        ctx.lineTo(p.x + p.w - 6, screenY + p.h - 4);
+        ctx.fill();
+      }
+      return;
+    }
+
+    if (p.type === 'moon') {
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(p.x, screenY, p.w, 120);
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.ellipse(90, screenY + 24, 34, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(260, screenY + 34, 48, 13, 0, 0, Math.PI * 2);
+      ctx.ellipse(400, screenY + 20, 26, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // プレイヤー描画（宇宙服風の小さなキャラ）
+  function drawPlayer() {
+    const px = player.x;
+    const py = player.y - cameraY;
+
+    // 体
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(px + 4, py + 12, player.w - 8, 16);
+    // ヘルメット
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(px + player.w / 2, py + 9, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // バイザー
+    ctx.fillStyle = '#38bdf8';
+    const vx = player.facing === 1 ? px + 11 : px + 5;
+    ctx.fillRect(vx, py + 6, 8, 6);
+    // 足
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(px + 5, py + 28, 5, 6);
+    ctx.fillRect(px + 14, py + 28, 5, 6);
+  }
+
+  // HUD描画
+  function drawHUD(meters) {
+    const zone = getZone(meters);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+    ctx.fillRect(10, 10, 195, 58);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText(`ALT: ${meters}m / ${GOAL_METERS}m`, 20, 32);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '13px monospace';
+    ctx.fillText(`AREA: ${zone.name}`, 20, 54);
+
+    // 右側の高度ゲージ
+    const barX = W - 18;
+    const barY = 40;
+    const barH = H - 80;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+    ctx.fillRect(barX, barY, 8, barH);
+    const ratio = Math.min(1, meters / GOAL_METERS);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(barX, barY + barH * (1 - ratio), 8, barH * ratio);
+  }
+
+  // エンディング画面：月から見た地球
+  function drawEnding() {
+    // 漆黒の宇宙
+    ctx.fillStyle = '#02040a';
+    ctx.fillRect(0, 0, W, H);
+
+    // 星空
+    for (const s of stars) {
+      const tw = 0.5 + 0.5 * Math.sin(frameCount * 0.04 + s.twinkle);
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + 0.6 * tw})`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 地球（青い光輪＋海＋大陸＋雲）
+    const ex = W / 2;
+    const ey = 225;
+    const er = 82;
+
+    // 大気の青いグロー
+    const glow = ctx.createRadialGradient(ex, ey, er * 0.85, ex, ey, er * 1.45);
+    glow.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
+    glow.addColorStop(1, 'rgba(56, 189, 248, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(ex, ey, er * 1.45, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 地球本体（クリップして海・大陸・雲を描く）
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ex, ey, er, 0, Math.PI * 2);
+    ctx.clip();
+
+    // 海
+    const seaGrad = ctx.createRadialGradient(ex - 25, ey - 25, 10, ex, ey, er);
+    seaGrad.addColorStop(0, '#38bdf8');
+    seaGrad.addColorStop(0.65, '#0284c7');
+    seaGrad.addColorStop(1, '#0c4a6e');
+    ctx.fillStyle = seaGrad;
+    ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+
+    // 大陸（簡易的な緑・茶のシルエット）
+    ctx.fillStyle = '#22c55e';
+    ctx.beginPath();
+    ctx.ellipse(ex - 22, ey - 18, 32, 20, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(ex + 28, ey + 12, 26, 30, 0.4, 0, Math.PI * 2);
+    ctx.ellipse(ex - 35, ey + 34, 18, 12, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 雲
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+    ctx.beginPath();
+    ctx.ellipse(ex - 10, ey - 38, 42, 8, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(ex + 18, ey - 4, 36, 9, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(ex - 15, ey + 28, 44, 10, 0.05, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 夜の影（地球の欠け）
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.55)';
+    ctx.beginPath();
+    ctx.arc(ex + 46, ey + 28, er * 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 手前の月面（緩やかな弧）
+    ctx.fillStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.ellipse(W / 2, H + 90, W * 0.85, 220, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+
+    // 月面のクレーター
+    ctx.fillStyle = '#94a3b8';
+    ctx.beginPath();
+    ctx.ellipse(110, H - 70, 38, 12, -0.1, 0, Math.PI * 2);
+    ctx.ellipse(360, H - 55, 50, 15, 0.1, 0, Math.PI * 2);
+    ctx.ellipse(230, H - 30, 28, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 月面に立つプレイヤーのシルエット
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(W / 2 - 6, H - 152, 12, 18);
+    ctx.beginPath();
+    ctx.arc(W / 2, H - 158, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // テキスト
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 26px monospace';
+    ctx.fillText('TOUCHDOWN ON THE MOON', W / 2, 72);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '15px monospace';
+    ctx.fillText(`CLEAR TIME: ${clearTime.toFixed(1)}s  /  MAX FALL: ${maxFall}m`, W / 2, 104);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = '14px monospace';
+    ctx.fillText('PRESS SPACE OR ENTER TO PLAY AGAIN', W / 2, H - 24);
+    ctx.textAlign = 'left';
+  }
+
+  function draw() {
+    if (state === 'ending') {
+      drawEnding();
+      return;
+    }
+
+    const meters = Math.max(0, Math.round(-(player.y + player.h) / PIXELS_PER_METER));
+    drawBackground(meters);
+
+    for (const p of platforms) {
+      const sy = p.y - cameraY;
+      if (sy > -80 && sy < H + 80) {
+        drawPlatform(p, sy);
+      }
+    }
+
+    drawPlayer();
+    drawHUD(meters);
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  initGame();
+  loop();
+})();
+</script>
+</body>
+</html>
