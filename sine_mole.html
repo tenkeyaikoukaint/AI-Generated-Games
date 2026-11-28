@@ -1,0 +1,1849 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>波状軌跡 もぐらたたき</title>
+  <style>
+    /* =========================================
+       レトロアーケード風ベーススタイル（外部依存なし）
+       ========================================= */
+    :root {
+      --bg-dark: #14121d;
+      --cabinet-bg: #1e1b2e;
+      --cabinet-border: #3d3559;
+      --accent-gold: #ffd54f;
+      --accent-green: #66bb6a;
+      --accent-red: #ef5350;
+      --accent-cyan: #4dd0e1;
+      --text-main: #f5f2eb;
+      --text-muted: #b0a8c8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top, #25203b 0%, var(--bg-dark) 75%);
+      color: var(--text-main);
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", "MS Gothic", monospace, sans-serif;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* ゲーム全体のコンテナ */
+    .game-shell {
+      width: 100%;
+      max-width: 560px;
+      height: 100dvh;
+      max-height: 920px;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 12px 12px;
+      gap: 8px;
+    }
+
+    /* 上部HUDバー */
+    .hud-bar {
+      background: var(--cabinet-bg);
+      border: 3px solid var(--cabinet-border);
+      border-radius: 14px;
+      padding: 8px 12px;
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .hud-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-size: 20px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    .stat-value.score { color: var(--accent-gold); }
+    .stat-value.high { color: var(--accent-cyan); font-size: 16px; }
+    .stat-value.combo { color: #ff8a65; }
+
+    .life-display {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 18px;
+      letter-spacing: 1px;
+    }
+
+    .heart {
+      display: inline-block;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+    }
+    .heart.alive { color: var(--accent-red); }
+    .heart.lost { color: #463f5e; opacity: 0.5; transform: scale(0.85); }
+
+    /* サウンド切り替えボタン */
+    .sound-btn {
+      background: linear-gradient(180deg, #3c345a 0%, #2a2442 100%);
+      color: var(--text-main);
+      border: 2px solid #594e82;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 3px 0 #151124;
+      transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
+      white-space: nowrap;
+      min-height: 36px;
+    }
+
+    .sound-btn:hover {
+      background: linear-gradient(180deg, #4b4170 0%, #342d52 100%);
+    }
+
+    .sound-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #151124;
+    }
+
+    .sound-btn.muted {
+      color: var(--text-muted);
+      border-color: #423a5c;
+      background: #241f36;
+    }
+
+    /* キャンバスラッパー（画面中央に収める） */
+    .stage-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      background: #0d0b14;
+      border: 4px solid var(--cabinet-border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255, 255, 255, 0.05);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    /* オーバーレイ（タイトル画面・ゲームオーバー画面） */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 13, 26, 0.86);
+      backdrop-filter: blur(3px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 18px;
+      z-index: 10;
+      transition: opacity 0.25s ease;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .panel {
+      width: 100%;
+      max-width: 420px;
+      background: linear-gradient(180deg, #28223d 0%, #1b172b 100%);
+      border: 3px solid #5c5087;
+      border-radius: 18px;
+      padding: 20px 18px;
+      text-align: center;
+      box-shadow: 0 12px 0 rgba(0, 0, 0, 0.45), 0 0 30px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .title-badge {
+      display: inline-block;
+      align-self: center;
+      background: #3d3163;
+      color: var(--accent-cyan);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid #635399;
+    }
+
+    .panel h1 {
+      font-size: clamp(24px, 6vw, 32px);
+      font-weight: 900;
+      color: var(--accent-gold);
+      text-shadow: 0 4px 0 #7a4600, 0 6px 12px rgba(0, 0, 0, 0.6);
+      letter-spacing: 0.04em;
+      line-height: 1.2;
+    }
+
+    .panel h2 {
+      font-size: clamp(24px, 6vw, 30px);
+      font-weight: 900;
+      color: var(--accent-red);
+      text-shadow: 0 4px 0 #661313;
+      letter-spacing: 0.06em;
+    }
+
+    .rule-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #e8e3f5;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    /* もぐら紹介リスト */
+    .mole-guide {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .mole-card {
+      background: rgba(15, 12, 24, 0.55);
+      border: 2px solid #3f3661;
+      border-radius: 12px;
+      padding: 8px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .mole-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50% 50% 42% 42%;
+      border: 2px solid rgba(0, 0, 0, 0.5);
+      position: relative;
+      box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.25);
+    }
+    .mole-dot.normal { background: #8d5524; }
+    .mole-dot.fast { background: #2c2c38; }
+    .mole-dot.gold { background: linear-gradient(135deg, #fff176, #ffb300); }
+
+    .mole-dot::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 56%;
+      transform: translate(-50%, -50%);
+      width: 10px;
+      height: 6px;
+      background: #f48fb1;
+      border-radius: 50%;
+    }
+
+    .mole-name {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    .mole-desc {
+      font-size: 10px;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .mole-pts {
+      font-size: 12px;
+      font-weight: 900;
+      color: var(--accent-gold);
+    }
+
+    /* ゲームオーバー結果グリッド */
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .result-item {
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid #3c345c;
+      border-radius: 12px;
+      padding: 10px 8px;
+    }
+
+    .result-item .label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .result-item .val {
+      font-size: 22px;
+      font-weight: 900;
+      color: var(--accent-gold);
+    }
+
+    .new-record {
+      display: inline-block;
+      align-self: center;
+      background: linear-gradient(90deg, #ffca28, #ff7043);
+      color: #211000;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 4px 14px;
+      border-radius: 999px;
+      animation: pulseBadge 0.9s infinite alternate;
+    }
+
+    .new-record.hidden {
+      display: none;
+    }
+
+    @keyframes pulseBadge {
+      from { transform: scale(1); }
+      to { transform: scale(1.07); }
+    }
+
+    /* レトロ風メインボタン */
+    .retro-btn {
+      width: 100%;
+      padding: 14px 20px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      color: #1f1400;
+      background: linear-gradient(180deg, #ffe066 0%, #ffb300 100%);
+      border: 3px solid #fff3c4;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 6px 0 #995c00, 0 10px 20px rgba(0, 0, 0, 0.45);
+      transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
+    }
+
+    .retro-btn:hover {
+      filter: brightness(1.06);
+    }
+
+    .retro-btn:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #995c00, 0 4px 10px rgba(0, 0, 0, 0.4);
+    }
+
+    /* 下部フッターヒント */
+    .footer-tip {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
+
+    @media (max-width: 420px) {
+      .game-shell {
+        padding: 6px 8px 8px;
+        gap: 6px;
+      }
+      .hud-bar {
+        padding: 6px 10px;
+      }
+      .stat-value {
+        font-size: 17px;
+      }
+      .stat-value.high {
+        font-size: 14px;
+      }
+      .life-display {
+        font-size: 16px;
+      }
+      .panel {
+        padding: 16px 14px;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-shell">
+    <!-- 上部HUD -->
+    <header class="hud-bar" aria-label="ゲームステータス">
+      <div class="hud-row">
+        <div class="stat-group">
+          <div class="stat-box">
+            <span class="stat-label">スコア</span>
+            <span id="scoreVal" class="stat-value score">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">コンボ</span>
+            <span id="comboVal" class="stat-value combo">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">ハイスコア</span>
+            <span id="highScoreVal" class="stat-value high">0</span>
+          </div>
+        </div>
+        <button id="soundToggleBtn" class="sound-btn" type="button" aria-pressed="true">
+          🔊 音: ON
+        </button>
+      </div>
+      <div class="hud-row">
+        <div class="stat-box">
+          <span class="stat-label">ライフ（逃げられると減少）</span>
+          <div id="lifeDisplay" class="life-display" aria-label="残りライフ"></div>
+        </div>
+        <div class="stat-box" style="text-align: right;">
+          <span class="stat-label">レベル</span>
+          <span id="levelVal" class="stat-value" style="font-size: 16px; color: #a5d6a7;">LV.1</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- メインゲームキャンバス -->
+    <main class="stage-wrap" id="stageWrap">
+      <canvas id="gameCanvas" aria-label="波状軌跡もぐらたたきゲーム画面"></canvas>
+
+      <!-- タイトル画面オーバーレイ -->
+      <div id="titleOverlay" class="overlay">
+        <div class="panel">
+          <span class="title-badge">RETRO ARCADE EDITION</span>
+          <h1>波状軌跡<br>もぐらたたき</h1>
+          <p class="rule-text">
+            下から波状に登ってくるもぐらの軌跡を読んで、<br>
+            <strong>地上に出た瞬間</strong>を叩け！<br>
+            地中にいる間は叩けないぞ。
+          </p>
+          <div class="mole-guide">
+            <div class="mole-card">
+              <div class="mole-dot normal"></div>
+              <div class="mole-name">茶色もぐら</div>
+              <div class="mole-desc">安定した波</div>
+              <div class="mole-pts">100点</div>
+            </div>
+            <div class="mole-card">
+              <div class="mole-dot fast"></div>
+              <div class="mole-name">黒もぐら</div>
+              <div class="mole-desc">細かい速い波</div>
+              <div class="mole-pts">200点</div>
+            </div>
+            <div class="mole-card">
+              <div class="mole-dot gold"></div>
+              <div class="mole-name">金もぐら</div>
+              <div class="mole-desc">大きくうねる</div>
+              <div class="mole-pts">500点</div>
+            </div>
+          </div>
+          <button id="startBtn" class="retro-btn" type="button">ゲームスタート</button>
+        </div>
+      </div>
+
+      <!-- ゲームオーバーオーバーレイ -->
+      <div id="gameOverOverlay" class="overlay hidden">
+        <div class="panel">
+          <h2>ゲームオーバー</h2>
+          <span id="newRecordBadge" class="new-record hidden">★ ハイスコア更新！ ★</span>
+          <div class="result-grid">
+            <div class="result-item">
+              <div class="label">最終スコア</div>
+              <div id="finalScore" class="val">0</div>
+            </div>
+            <div class="result-item">
+              <div class="label">最大コンボ</div>
+              <div id="finalMaxCombo" class="val" style="color: #ff8a65;">0</div>
+            </div>
+            <div class="result-item">
+              <div class="label">叩いた数</div>
+              <div id="finalHits" class="val" style="color: #81c784;">0</div>
+            </div>
+            <div class="result-item">
+              <div class="label">到達レベル</div>
+              <div id="finalLevel" class="val" style="color: #4dd0e1;">LV.1</div>
+            </div>
+          </div>
+          <button id="retryBtn" class="retro-btn" type="button">もういちど遊ぶ</button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer-tip">
+      クリック / タップで地上に出たもぐらを叩こう！波の軌跡で出現位置を予測せよ
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      /* =========================================================
+         定数とゲーム設定
+         ========================================================= */
+      const SURFACE_RATIO = 0.22; // 画面上部22%が地上、下部78%が地中
+      const MAX_LIVES = 5;
+      const STORAGE_KEY = 'wave_whac_a_mole_highscore_v1';
+
+      // もぐらの種類定義
+      const MOLE_TYPES = {
+        normal: {
+          id: 'normal',
+          name: '茶色もぐら',
+          points: 100,
+          bodyColor: '#8d5524',
+          shadeColor: '#5c3310',
+          bellyColor: '#d7a87e',
+          noseColor: '#f48fb1',
+          climbTime: [3.2, 4.1],     // 地表まで登る秒数範囲（レベルで短縮）
+          stayTime: 1.55,            // 地上に出ている秒数
+          freqRange: [1.1, 1.8],     // 波の周期数
+          ampRatio: [0.10, 0.17],    // 画面幅に対する振幅比率
+          trailColor: '#2d1c10'
+        },
+        fast: {
+          id: 'fast',
+          name: '黒もぐら',
+          points: 200,
+          bodyColor: '#303242',
+          shadeColor: '#191a24',
+          bellyColor: '#6b6f85',
+          noseColor: '#ff7043',
+          climbTime: [2.2, 2.9],
+          stayTime: 1.25,
+          freqRange: [2.1, 3.1],
+          ampRatio: [0.08, 0.14],
+          trailColor: '#241812'
+        },
+        gold: {
+          id: 'gold',
+          name: '金もぐら',
+          points: 500,
+          bodyColor: '#ffca28',
+          shadeColor: '#c78500',
+          bellyColor: '#fff59d',
+          noseColor: '#ff5252',
+          climbTime: [2.5, 3.2],
+          stayTime: 1.05,
+          freqRange: [1.3, 2.0],
+          ampRatio: [0.20, 0.28],
+          trailColor: '#382510'
+        }
+      };
+
+      /* =========================================================
+         Web Audio API レトロ8bitサウンドエンジン
+         ========================================================= */
+      class RetroSound {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+        }
+
+        ensureContext() {
+          if (!this.enabled) return null;
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) {
+                this.ctx = new AudioCtx();
+              }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume();
+            }
+          } catch (err) {
+            return null;
+          }
+          return this.ctx;
+        }
+
+        setEnabled(flag) {
+          this.enabled = flag;
+          if (flag) {
+            this.ensureContext();
+          }
+        }
+
+        // 短い矩形波・三角波トーンを鳴らす共通関数
+        playTone(type, startFreq, endFreq, duration, volume = 0.14, delay = 0) {
+          const ctx = this.ensureContext();
+          if (!ctx) return;
+
+          const now = ctx.currentTime + delay;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = type;
+          osc.frequency.setValueAtTime(startFreq, now);
+          if (endFreq !== startFreq) {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
+          }
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(volume, now + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + duration + 0.02);
+        }
+
+        // ノイズバースト（打撃・土掘り用）
+        playNoise(duration, volume = 0.12, lowpassFreq = 1200) {
+          const ctx = this.ensureContext();
+          if (!ctx) return;
+
+          const bufferSize = Math.floor(ctx.sampleRate * duration);
+          const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.value = lowpassFreq;
+
+          const gain = ctx.createGain();
+          const now = ctx.currentTime;
+          gain.gain.setValueAtTime(volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          noise.start(now);
+          noise.stop(now + duration + 0.01);
+        }
+
+        // 掘り始めのゴソゴソ音
+        playDigSpawn() {
+          this.playTone('triangle', 120, 85, 0.09, 0.07);
+        }
+
+        // 地上に飛び出した時のチャープ音
+        playPopOut(isGold = false) {
+          if (isGold) {
+            this.playTone('square', 520, 1040, 0.10, 0.10);
+            this.playTone('square', 780, 1320, 0.10, 0.09, 0.06);
+          } else {
+            this.playTone('square', 280, 620, 0.11, 0.09);
+          }
+        }
+
+        // もぐらを叩いた時のヒット音（コンボで音程上昇）
+        playWhack(combo, isGold = false) {
+          const pitchMult = Math.min(2.0, 1 + (combo - 1) * 0.07);
+          this.playNoise(0.08, 0.18, 1600);
+          this.playTone('square', 380 * pitchMult, 760 * pitchMult, 0.11, 0.14);
+          if (isGold) {
+            this.playTone('square', 660, 990, 0.09, 0.12, 0.06);
+            this.playTone('square', 880, 1320, 0.14, 0.12, 0.12);
+          }
+        }
+
+        // 地中を叩いた時の鈍い音
+        playUndergroundThud() {
+          this.playTone('triangle', 130, 55, 0.10, 0.14);
+          this.playNoise(0.05, 0.08, 450);
+        }
+
+        // 逃げられた時の音
+        playEscape() {
+          this.playTone('sawtooth', 360, 130, 0.22, 0.11);
+          this.playTone('square', 240, 100, 0.18, 0.08, 0.10);
+        }
+
+        // ゲーム開始ファンファーレ
+        playStart() {
+          const notes = [330, 440, 554, 659];
+          notes.forEach((freq, idx) => {
+            this.playTone('square', freq, freq, 0.10, 0.10, idx * 0.07);
+          });
+        }
+
+        // ゲームオーバーのジングル
+        playGameOver() {
+          const notes = [440, 392, 349, 262];
+          notes.forEach((freq, idx) => {
+            this.playTone('sawtooth', freq, freq * 0.96, 0.20, 0.11, idx * 0.15);
+          });
+        }
+      }
+
+      /* =========================================================
+         DOM要素取得
+         ========================================================= */
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const stageWrap = document.getElementById('stageWrap');
+
+      const scoreValEl = document.getElementById('scoreVal');
+      const comboValEl = document.getElementById('comboVal');
+      const highScoreValEl = document.getElementById('highScoreVal');
+      const lifeDisplayEl = document.getElementById('lifeDisplay');
+      const levelValEl = document.getElementById('levelVal');
+      const soundToggleBtn = document.getElementById('soundToggleBtn');
+
+      const titleOverlay = document.getElementById('titleOverlay');
+      const gameOverOverlay = document.getElementById('gameOverOverlay');
+      const startBtn = document.getElementById('startBtn');
+      const retryBtn = document.getElementById('retryBtn');
+
+      const finalScoreEl = document.getElementById('finalScore');
+      const finalMaxComboEl = document.getElementById('finalMaxCombo');
+      const finalHitsEl = document.getElementById('finalHits');
+      const finalLevelEl = document.getElementById('finalLevel');
+      const newRecordBadge = document.getElementById('newRecordBadge');
+
+      const sound = new RetroSound();
+
+      /* =========================================================
+         ゲーム状態管理
+         ========================================================= */
+      let width = 500;
+      let height = 700;
+      let surfaceY = Math.floor(height * SURFACE_RATIO);
+      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      // 背景地層キャッシュ用オフスクリーンキャンバス
+      let bgCache = document.createElement('canvas');
+      let bgCtx = bgCache.getContext('2d');
+
+      const state = {
+        mode: 'title', // 'title' | 'playing' | 'gameover'
+        score: 0,
+        highScore: 0,
+        combo: 0,
+        maxCombo: 0,
+        hits: 0,
+        lives: MAX_LIVES,
+        level: 1,
+        elapsed: 0,
+        spawnTimer: 0.6,
+        hitstopTimer: 0,
+        shakeTimer: 0,
+        shakeIntensity: 0,
+        damageFlash: 0,
+        clouds: [],
+        moles: [],
+        fadingTrails: [],
+        particles: [],
+        floatingTexts: [],
+        hammers: []
+      };
+
+      /* =========================================================
+         ユーティリティ関数
+         ========================================================= */
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      function clamp(val, min, max) {
+        return Math.max(min, Math.min(max, val));
+      }
+
+      function loadHighScore() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          return saved ? Math.max(0, parseInt(saved, 10) || 0) : 0;
+        } catch (err) {
+          return 0;
+        }
+      }
+
+      function saveHighScore(val) {
+        try {
+          localStorage.setItem(STORAGE_KEY, String(val));
+        } catch (err) {
+          // ストレージ無効環境では無視
+        }
+      }
+
+      /* =========================================================
+         HUD更新
+         ========================================================= */
+      function updateHUD() {
+        scoreValEl.textContent = state.score.toLocaleString();
+        comboValEl.textContent = state.combo > 0 ? `${state.combo}x` : '0';
+        highScoreValEl.textContent = state.highScore.toLocaleString();
+        levelValEl.textContent = `LV.${state.level}`;
+
+        // ハート描画
+        let heartsHTML = '';
+        for (let i = 0; i < MAX_LIVES; i++) {
+          const alive = i < state.lives;
+          heartsHTML += `<span class="heart ${alive ? 'alive' : 'lost'}">♥</span>`;
+        }
+        lifeDisplayEl.innerHTML = heartsHTML;
+      }
+
+      /* =========================================================
+         背景（空・地層・小石）のオフスクリーン生成とリサイズ処理
+         ========================================================= */
+      function initClouds() {
+        state.clouds = [
+          { x: width * 0.15, y: surfaceY * 0.30, w: 68, speed: 10 },
+          { x: width * 0.58, y: surfaceY * 0.48, w: 54, speed: 7 },
+          { x: width * 0.85, y: surfaceY * 0.24, w: 76, speed: 12 }
+        ];
+      }
+
+      function buildBackgroundCache() {
+        bgCache.width = Math.max(1, Math.floor(width));
+        bgCache.height = Math.max(1, Math.floor(height));
+        const g = bgCtx;
+
+        // 1. 地上（空）のグラデーション
+        const skyGrad = g.createLinearGradient(0, 0, 0, surfaceY);
+        skyGrad.addColorStop(0, '#388ee6');
+        skyGrad.addColorStop(0.65, '#7bc8f6');
+        skyGrad.addColorStop(1, '#c8f0ff');
+        g.fillStyle = skyGrad;
+        g.fillRect(0, 0, width, surfaceY);
+
+        // レトロ風太陽
+        const sunX = width * 0.86;
+        const sunY = surfaceY * 0.32;
+        g.fillStyle = 'rgba(255, 241, 118, 0.28)';
+        g.beginPath();
+        g.arc(sunX, sunY, 32, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = '#ffe066';
+        g.beginPath();
+        g.arc(sunX, sunY, 19, 0, Math.PI * 2);
+        g.fill();
+
+        // 遠くの丘（シルエット）
+        g.fillStyle = '#7ec876';
+        g.beginPath();
+        g.moveTo(0, surfaceY);
+        g.quadraticCurveTo(width * 0.22, surfaceY - 34, width * 0.48, surfaceY);
+        g.quadraticCurveTo(width * 0.76, surfaceY - 28, width, surfaceY);
+        g.closePath();
+        g.fill();
+
+        // 2. 地中（78%）の多層地層
+        const underH = height - surfaceY;
+        const layers = [
+          { ratio: 0.00, color: '#7b4b2a' }, // 表土
+          { ratio: 0.18, color: '#6b3e21' }, // 赤土
+          { ratio: 0.45, color: '#58321b' }, // 中層
+          { ratio: 0.74, color: '#452615' }, // 深層
+          { ratio: 1.00, color: '#331c10' }  // 最深部
+        ];
+
+        const soilGrad = g.createLinearGradient(0, surfaceY, 0, height);
+        layers.forEach(l => soilGrad.addColorStop(l.ratio, l.color));
+        g.fillStyle = soilGrad;
+        g.fillRect(0, surfaceY, width, underH);
+
+        // 地層の波打つ境界バンド（レトロな断面図感）
+        const bandPositions = [0.20, 0.46, 0.74];
+        bandPositions.forEach((r, idx) => {
+          const by = surfaceY + underH * r;
+          g.strokeStyle = idx % 2 === 0 ? 'rgba(255, 210, 160, 0.07)' : 'rgba(0, 0, 0, 0.16)';
+          g.lineWidth = 4;
+          g.beginPath();
+          for (let x = 0; x <= width; x += 24) {
+            const wy = by + Math.sin(x * 0.03 + idx * 2) * 5;
+            if (x === 0) g.moveTo(x, wy);
+            else g.lineTo(x, wy);
+          }
+          g.stroke();
+        });
+
+        // 小石・土粒テクスチャ（疑似ランダムで配置）
+        const pebbleCount = Math.floor((width * underH) / 4200);
+        for (let i = 0; i < pebbleCount; i++) {
+          const px = Math.random() * width;
+          const py = surfaceY + 18 + Math.random() * (underH - 26);
+          const pr = 2 + Math.random() * 4.5;
+          const isLight = Math.random() > 0.55;
+          g.fillStyle = isLight ? 'rgba(186, 134, 92, 0.22)' : 'rgba(24, 12, 6, 0.25)';
+          g.beginPath();
+          g.ellipse(px, py, pr * 1.3, pr * 0.85, Math.random() * Math.PI, 0, Math.PI * 2);
+          g.fill();
+        }
+
+        // 3. 地表の芝生ライン
+        g.fillStyle = '#388e3c';
+        g.fillRect(0, surfaceY - 4, width, 12);
+        g.fillStyle = '#66bb6a';
+        g.fillRect(0, surfaceY - 6, width, 6);
+
+        // 草のギザギザ
+        g.fillStyle = '#81c784';
+        for (let x = 4; x < width; x += 14) {
+          const h = 4 + (x % 3) * 2;
+          g.beginPath();
+          g.moveTo(x, surfaceY - 5);
+          g.lineTo(x + 4, surfaceY - 5 - h);
+          g.lineTo(x + 8, surfaceY - 5);
+          g.closePath();
+          g.fill();
+        }
+      }
+
+      function resizeCanvas() {
+        const rect = stageWrap.getBoundingClientRect();
+        const prevW = width;
+        const prevH = height;
+
+        width = Math.max(280, Math.floor(rect.width));
+        height = Math.max(360, Math.floor(rect.height));
+        surfaceY = Math.floor(height * SURFACE_RATIO);
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        buildBackgroundCache();
+
+        if (state.clouds.length === 0) {
+          initClouds();
+        } else if (prevW > 0 && prevH > 0) {
+          // リサイズ時に既存のもぐらと軌跡を比率補正
+          const sx = width / prevW;
+          const sy = height / prevH;
+          state.moles.forEach(m => {
+            m.baseX *= sx;
+            m.amp *= sx;
+            m.x *= sx;
+            m.y *= sy;
+            m.trail.forEach(pt => {
+              pt.x *= sx;
+              pt.y *= sy;
+            });
+          });
+          state.fadingTrails.forEach(ft => {
+            ft.points.forEach(pt => {
+              pt.x *= sx;
+              pt.y *= sy;
+            });
+          });
+        }
+      }
+
+      /* =========================================================
+         もぐらの生成と波状軌道ロジック
+         ========================================================= */
+      function pickMoleType() {
+        const r = Math.random();
+        // レベルに応じて黒・金もぐらの出現率を緩やかに上げる
+        const goldChance = Math.min(0.16, 0.08 + (state.level - 1) * 0.015);
+        const fastChance = Math.min(0.36, 0.16 + (state.level - 1) * 0.035);
+
+        if (r < goldChance) return MOLE_TYPES.gold;
+        if (r < goldChance + fastChance) return MOLE_TYPES.fast;
+        return MOLE_TYPES.normal;
+      }
+
+      function spawnMole() {
+        const cfg = pickMoleType();
+        const speedBoost = 1 + (state.level - 1) * 0.09; // レベルごとに上昇加速
+        const climbDuration = rand(cfg.climbTime[0], cfg.climbTime[1]) / speedBoost;
+        const stayDuration = Math.max(0.68, cfg.stayTime - (state.level - 1) * 0.055);
+
+        const amp = rand(cfg.ampRatio[0], cfg.ampRatio[1]) * width;
+        const edgeMargin = 42;
+        const minBaseX = edgeMargin + amp;
+        const maxBaseX = width - edgeMargin - amp;
+
+        // 既存もぐらの地表到達予定位置と重なりすぎないように少し調整
+        let baseX = rand(minBaseX, Math.max(minBaseX + 1, maxBaseX));
+        const freq = rand(cfg.freqRange[0], cfg.freqRange[1]);
+        const phase = rand(0, Math.PI * 2);
+
+        const startY = height + 18;
+        const endY = surfaceY;
+        const startX = clamp(baseX + Math.sin(phase) * amp, edgeMargin, width - edgeMargin);
+
+        const mole = {
+          type: cfg.id,
+          cfg,
+          state: 'climbing', // 'climbing' | 'surfaced' | 'whacked' | 'escaping'
+          progress: 0,       // 0.0 (最下部) -> 1.0 (地表)
+          climbDuration,
+          stayDuration,
+          stayTimer: 0,
+          animTimer: 0,
+          baseX,
+          amp,
+          freq,
+          phase,
+          startY,
+          endY,
+          x: startX,
+          y: startY,
+          prevX: startX,
+          prevY: startY,
+          angle: 0,
+          trail: [{ x: startX, y: startY }],
+          digParticleTimer: 0
+        };
+
+        state.moles.push(mole);
+        sound.playDigSpawn();
+      }
+
+      function archiveTrail(mole) {
+        if (mole.trail.length > 1) {
+          state.fadingTrails.push({
+            points: mole.trail.slice(),
+            color: mole.cfg.trailColor,
+            alpha: 0.92
+          });
+        }
+      }
+
+      /* =========================================================
+         パーティクル・テキスト・ハンマーエフェクト
+         ========================================================= */
+      function spawnParticles(x, y, color, count, speedMin = 40, speedMax = 180, upward = false) {
+        for (let i = 0; i < count; i++) {
+          const angle = upward
+            ? rand(-Math.PI * 0.85, -Math.PI * 0.15)
+            : rand(0, Math.PI * 2);
+          const speed = rand(speedMin, speedMax);
+          state.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: rand(3, 7),
+            color,
+            life: rand(0.28, 0.58),
+            maxLife: 0.58,
+            gravity: 380
+          });
+        }
+      }
+
+      function spawnFloatingText(x, y, text, color = '#ffe066', size = 22) {
+        state.floatingTexts.push({
+          x,
+          y,
+          text,
+          color,
+          size,
+          life: 0.85,
+          maxLife: 0.85
+        });
+      }
+
+      function spawnHammer(x, y, hitSuccess) {
+        state.hammers.push({
+          x,
+          y,
+          hitSuccess,
+          timer: 0,
+          duration: 0.22
+        });
+      }
+
+      /* =========================================================
+         入力処理（マウス・タッチ両対応）
+         ========================================================= */
+      function handleHitInput(clientX, clientY) {
+        if (state.mode !== 'playing') return;
+
+        const rect = canvas.getBoundingClientRect();
+        const x = ((clientX - rect.left) / rect.width) * width;
+        const y = ((clientY - rect.top) / rect.height) * height;
+
+        // 地上に出ているもぐらから一番近いものを探す（広めの当たり判定で爽快に）
+        let hitMole = null;
+        let bestDist = Infinity;
+        const hitRadius = Math.max(54, width * 0.115);
+
+        for (let i = state.moles.length - 1; i >= 0; i--) {
+          const m = state.moles[i];
+          if (m.state !== 'surfaced') continue;
+
+          // もぐらの頭の中心は surfaceY より少し上
+          const targetX = m.x;
+          const targetY = surfaceY - 18;
+          const dist = Math.hypot(x - targetX, y - targetY);
+          if (dist <= hitRadius && dist < bestDist) {
+            bestDist = dist;
+            hitMole = m;
+          }
+        }
+
+        if (hitMole) {
+          // ヒット成功！
+          hitMole.state = 'whacked';
+          hitMole.animTimer = 0;
+
+          state.combo += 1;
+          if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+          state.hits += 1;
+
+          // コンボボーナス計算
+          const comboMult = 1 + Math.min(state.combo - 1, 10) * 0.1;
+          const gained = Math.round((hitMole.cfg.points * comboMult) / 10) * 10;
+          state.score += gained;
+
+          if (state.score > state.highScore) {
+            state.highScore = state.score;
+            saveHighScore(state.highScore);
+          }
+
+          // ヒットストップとシェイク
+          state.hitstopTimer = 0.038;
+          state.shakeTimer = 0.14;
+          state.shakeIntensity = hitMole.type === 'gold' ? 9 : 5;
+
+          const isGold = hitMole.type === 'gold';
+          sound.playWhack(state.combo, isGold);
+
+          spawnHammer(hitMole.x, surfaceY - 14, true);
+          spawnParticles(hitMole.x, surfaceY - 18, isGold ? '#fff176' : '#ffd54f', isGold ? 22 : 14, 70, 240, true);
+          spawnParticles(hitMole.x, surfaceY - 4, '#8d5524', 8, 40, 140, true);
+
+          spawnFloatingText(hitMole.x, surfaceY - 44, `+${gained}`, isGold ? '#fff176' : '#ffe066', isGold ? 26 : 22);
+          if (state.combo >= 2) {
+            spawnFloatingText(hitMole.x, surfaceY - 68, `${state.combo} COMBO!`, '#ff8a65', 16);
+          }
+
+          updateHUD();
+        } else {
+          // 外れ（地中をクリックした場合など）
+          spawnHammer(x, y, false);
+          if (y > surfaceY + 8) {
+            sound.playUndergroundThud();
+            spawnParticles(x, y, '#6b3e21', 7, 30, 100, false);
+            spawnFloatingText(x, y - 12, '地中！', '#d7ccc8', 14);
+          } else {
+            sound.playUndergroundThud();
+            spawnParticles(x, y, '#81c784', 5, 30, 90, true);
+          }
+        }
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.ensureContext();
+        handleHitInput(e.clientX, e.clientY);
+      });
+
+      /* =========================================================
+         ゲームの開始・終了フロー
+         ========================================================= */
+      function startGame() {
+        sound.ensureContext();
+        sound.playStart();
+
+        state.mode = 'playing';
+        state.score = 0;
+        state.combo = 0;
+        state.maxCombo = 0;
+        state.hits = 0;
+        state.lives = MAX_LIVES;
+        state.level = 1;
+        state.elapsed = 0;
+        state.spawnTimer = 0.45;
+        state.hitstopTimer = 0;
+        state.shakeTimer = 0;
+        state.damageFlash = 0;
+        state.moles = [];
+        state.fadingTrails = [];
+        state.particles = [];
+        state.floatingTexts = [];
+        state.hammers = [];
+
+        titleOverlay.classList.add('hidden');
+        gameOverOverlay.classList.add('hidden');
+        updateHUD();
+      }
+
+      function triggerGameOver() {
+        state.mode = 'gameover';
+        sound.playGameOver();
+
+        const isNewRecord = state.score > 0 && state.score >= state.highScore;
+        finalScoreEl.textContent = state.score.toLocaleString();
+        finalMaxComboEl.textContent = `${state.maxCombo}`;
+        finalHitsEl.textContent = `${state.hits}匹`;
+        finalLevelEl.textContent = `LV.${state.level}`;
+
+        if (isNewRecord) {
+          newRecordBadge.classList.remove('hidden');
+        } else {
+          newRecordBadge.classList.add('hidden');
+        }
+
+        gameOverOverlay.classList.remove('hidden');
+      }
+
+      /* =========================================================
+         毎フレームの更新処理
+         ========================================================= */
+      function update(dt) {
+        // 雲は常にゆっくり流す
+        for (const c of state.clouds) {
+          c.x += c.speed * dt;
+          if (c.x - c.w > width + 20) {
+            c.x = -c.w - 10;
+          }
+        }
+
+        if (state.mode !== 'playing') return;
+
+        // ヒットストップ中はゲーム進行を一瞬止めて打撃感を強調
+        if (state.hitstopTimer > 0) {
+          state.hitstopTimer -= dt;
+          return;
+        }
+
+        if (state.shakeTimer > 0) {
+          state.shakeTimer = Math.max(0, state.shakeTimer - dt);
+        }
+        if (state.damageFlash > 0) {
+          state.damageFlash = Math.max(0, state.damageFlash - dt * 2.4);
+        }
+
+        // 経過時間とレベルアップ計算（約15秒ごとにレベル上昇）
+        state.elapsed += dt;
+        const newLevel = 1 + Math.floor(state.elapsed / 15);
+        if (newLevel !== state.level) {
+          state.level = newLevel;
+          spawnFloatingText(width / 2, surfaceY + 46, `LEVEL ${state.level}!`, '#4dd0e1', 26);
+          updateHUD();
+        }
+
+        // もぐらのスポーン制御
+        const maxActiveMoles = Math.min(7, 2 + Math.floor(state.level * 0.8));
+        state.spawnTimer -= dt;
+        if (state.spawnTimer <= 0 && state.moles.length < maxActiveMoles) {
+          spawnMole();
+          const baseInterval = Math.max(0.52, 1.55 - (state.level - 1) * 0.13);
+          state.spawnTimer = rand(baseInterval * 0.72, baseInterval * 1.15);
+        }
+
+        // もぐら各個体の更新
+        for (let i = state.moles.length - 1; i >= 0; i--) {
+          const m = state.moles[i];
+
+          if (m.state === 'climbing') {
+            m.prevX = m.x;
+            m.prevY = m.y;
+
+            m.progress += dt / m.climbDuration;
+            if (m.progress >= 1) {
+              m.progress = 1;
+              m.y = m.endY;
+              m.x = clamp(
+                m.baseX + Math.sin(m.progress * m.freq * Math.PI * 2 + m.phase) * m.amp,
+                36,
+                width - 36
+              );
+              m.trail.push({ x: m.x, y: m.y });
+
+              // 地表に飛び出し！
+              m.state = 'surfaced';
+              m.stayTimer = 0;
+              m.animTimer = 0;
+              sound.playPopOut(m.type === 'gold');
+              spawnParticles(m.x, surfaceY, '#7b4b2a', 10, 40, 140, true);
+              spawnParticles(m.x, surfaceY - 2, '#66bb6a', 5, 30, 110, true);
+            } else {
+              // 波状（サイン波）座標を計算
+              m.y = m.startY + (m.endY - m.startY) * m.progress;
+              m.x = clamp(
+                m.baseX + Math.sin(m.progress * m.freq * Math.PI * 2 + m.phase) * m.amp,
+                36,
+                width - 36
+              );
+
+              // 進行方向角度
+              m.angle = Math.atan2(m.y - m.prevY, m.x - m.prevX);
+
+              // 軌跡ポイント追加（一定距離ごとに記録して滑らかな波線に）
+              const lastPt = m.trail[m.trail.length - 1];
+              if (Math.hypot(m.x - lastPt.x, m.y - lastPt.y) >= 6) {
+                m.trail.push({ x: m.x, y: m.y });
+              }
+
+              // 掘削パーティクル
+              m.digParticleTimer -= dt;
+              if (m.digParticleTimer <= 0) {
+                m.digParticleTimer = 0.085;
+                spawnParticles(m.x, m.y, m.type === 'gold' ? '#ffe082' : '#4a2a14', 2, 15, 55, false);
+              }
+            }
+          } else if (m.state === 'surfaced') {
+            m.stayTimer += dt;
+            m.animTimer += dt;
+
+            // 金もぐらは地上でキラキラ光る
+            if (m.type === 'gold' && Math.random() < 0.25) {
+              spawnParticles(m.x + rand(-20, 20), surfaceY - rand(10, 36), '#fff59d', 1, 15, 50, true);
+            }
+
+            if (m.stayTimer >= m.stayDuration) {
+              // 時間切れで逃げられた！
+              m.state = 'escaping';
+              m.animTimer = 0;
+              state.combo = 0;
+              state.lives = Math.max(0, state.lives - 1);
+              state.damageFlash = 1.0;
+              state.shakeTimer = 0.22;
+              state.shakeIntensity = 7;
+
+              sound.playEscape();
+              spawnFloatingText(m.x, surfaceY - 40, 'にげられた！', '#ef5350', 18);
+              updateHUD();
+
+              if (state.lives <= 0) {
+                triggerGameOver();
+              }
+            }
+          } else if (m.state === 'whacked') {
+            m.animTimer += dt;
+            if (m.animTimer >= 0.34) {
+              archiveTrail(m);
+              state.moles.splice(i, 1);
+            }
+          } else if (m.state === 'escaping') {
+            m.animTimer += dt;
+            if (m.animTimer >= 0.36) {
+              archiveTrail(m);
+              state.moles.splice(i, 1);
+            }
+          }
+        }
+
+        // フェードアウト中の軌跡（土が埋まっていく表現）
+        for (let i = state.fadingTrails.length - 1; i >= 0; i--) {
+          const ft = state.fadingTrails[i];
+          ft.alpha -= dt * 0.28;
+          if (ft.alpha <= 0) {
+            state.fadingTrails.splice(i, 1);
+          }
+        }
+
+        // パーティクル更新
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+          const p = state.particles[i];
+          p.life -= dt;
+          if (p.life <= 0) {
+            state.particles.splice(i, 1);
+            continue;
+          }
+          p.vy += p.gravity * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+        }
+
+        // フローティングテキスト更新
+        for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = state.floatingTexts[i];
+          ft.life -= dt;
+          ft.y -= 42 * dt;
+          if (ft.life <= 0) {
+            state.floatingTexts.splice(i, 1);
+          }
+        }
+
+        // ハンマーアニメーション更新
+        for (let i = state.hammers.length - 1; i >= 0; i--) {
+          const h = state.hammers[i];
+          h.timer += dt;
+          if (h.timer >= h.duration) {
+            state.hammers.splice(i, 1);
+          }
+        }
+      }
+
+      /* =========================================================
+         描画処理
+         ========================================================= */
+      function drawCloud(x, y, w) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+        const h = w * 0.32;
+        ctx.fillRect(x, y, w, h);
+        ctx.fillRect(x + w * 0.18, y - h * 0.55, w * 0.58, h * 0.7);
+      }
+
+      function drawWaveTrail(points, color, alpha) {
+        if (points.length < 2) return;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // 掘ったトンネルの外枠（盛り上がった土の縁）
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.strokeStyle = 'rgba(166, 108, 62, 0.45)';
+        ctx.lineWidth = 30;
+        ctx.stroke();
+
+        // 暗いトンネル本体
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 22;
+        ctx.stroke();
+
+        // トンネル中心の深い影
+        ctx.strokeStyle = 'rgba(14, 7, 3, 0.65)';
+        ctx.lineWidth = 10;
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // 地中を掘り進むもぐらを描画
+      function drawClimbingMole(m) {
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        // 掘る方向に合わせて少し傾ける（上方向が -PI/2）
+        const tilt = clamp((m.angle + Math.PI / 2) * 0.65, -0.65, 0.65);
+        ctx.rotate(tilt);
+
+        const wiggle = Math.sin(state.elapsed * 26 + m.phase) * 2.5;
+
+        // 掘り進む体
+        ctx.fillStyle = m.cfg.shadeColor;
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 16, 19, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = m.cfg.bodyColor;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 14, 17, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 爪（左右で交互に土を掻く）
+        ctx.fillStyle = '#f5e1c8';
+        ctx.beginPath();
+        ctx.arc(-13, -7 + wiggle, 5, 0, Math.PI * 2);
+        ctx.arc(13, -7 - wiggle, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 鼻と小さな目
+        ctx.fillStyle = m.cfg.noseColor;
+        ctx.beginPath();
+        ctx.ellipse(0, -11, 5, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-6, -7, 3, 3);
+        ctx.fillRect(3, -7, 3, 3);
+
+        // 黒もぐらのサングラス
+        if (m.type === 'fast') {
+          ctx.fillStyle = '#111';
+          ctx.fillRect(-10, -8, 8, 5);
+          ctx.fillRect(2, -8, 8, 5);
+          ctx.fillRect(-2, -7, 4, 2);
+        }
+
+        // 金もぐらのハイライト
+        if (m.type === 'gold') {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.beginPath();
+          ctx.arc(-5, -13, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+
+        // 地表に近づいたら出現予測マーカー（芝生の揺れ）を薄く表示
+        if (m.progress > 0.78) {
+          const predX = clamp(
+            m.baseX + Math.sin(m.freq * Math.PI * 2 + m.phase) * m.amp,
+            36,
+            width - 36
+          );
+          const pulse = (m.progress - 0.78) / 0.22;
+          ctx.save();
+          ctx.globalAlpha = pulse * 0.75;
+          ctx.fillStyle = '#5c3310';
+          ctx.beginPath();
+          ctx.ellipse(predX, surfaceY + 2, 12 + pulse * 10, 4 + pulse * 3, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // 地上に顔を出したもぐらを描画
+      function drawSurfacedMole(m) {
+        ctx.save();
+
+        // 飛び出し・引っ込みの縦スケール計算
+        let popFactor = 1;
+        let squashX = 1;
+        let squashY = 1;
+
+        if (m.state === 'surfaced') {
+          const t = Math.min(1, m.animTimer / 0.12);
+          // ボヨンと出るイージング
+          popFactor = t < 1 ? 1 - Math.pow(1 - t, 3) : 1;
+          // 残り時間が少なくなると焦ってブルブル震える
+          const remainRatio = 1 - m.stayTimer / m.stayDuration;
+          if (remainRatio < 0.28) {
+            ctx.translate(Math.sin(state.elapsed * 55) * 2.5, 0);
+          }
+        } else if (m.state === 'whacked') {
+          squashX = 1.32;
+          squashY = 0.55;
+          popFactor = Math.max(0.2, 1 - m.animTimer * 1.4);
+        } else if (m.state === 'escaping') {
+          popFactor = Math.max(0, 1 - m.animTimer / 0.34);
+        }
+
+        const baseX = m.x;
+        const moleH = 48 * popFactor;
+
+        // 地表から上だけをクリップして「穴から飛び出ている」感じを出す
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(baseX - 48, 0, 96, surfaceY + 4);
+        ctx.clip();
+
+        ctx.translate(baseX, surfaceY + 6);
+        ctx.scale(squashX, squashY);
+
+        // 残り時間ゲージ（頭上の小さなバー）
+        if (m.state === 'surfaced') {
+          const remain = clamp(1 - m.stayTimer / m.stayDuration, 0, 1);
+          const barW = 36;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+          ctx.fillRect(-barW / 2, -moleH - 16, barW, 5);
+          ctx.fillStyle = remain > 0.35 ? '#66bb6a' : '#ef5350';
+          ctx.fillRect(-barW / 2, -moleH - 16, barW * remain, 5);
+        }
+
+        // もぐら本体（丸い頭と胴体）
+        ctx.fillStyle = m.cfg.shadeColor;
+        ctx.beginPath();
+        ctx.roundRect(-24, -moleH - 2, 48, 54, [24, 24, 6, 6]);
+        ctx.fill();
+
+        ctx.fillStyle = m.cfg.bodyColor;
+        ctx.beginPath();
+        ctx.roundRect(-21, -moleH, 42, 50, [21, 21, 6, 6]);
+        ctx.fill();
+
+        // お腹
+        ctx.fillStyle = m.cfg.bellyColor;
+        ctx.beginPath();
+        ctx.ellipse(0, -moleH + 34, 13, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 顔の表情
+        const faceY = -moleH + 17;
+        if (m.state === 'whacked') {
+          // 叩かれた「× ×」目とタンコブ
+          ctx.strokeStyle = '#111';
+          ctx.lineWidth = 2.5;
+          [-8, 8].forEach(ex => {
+            ctx.beginPath();
+            ctx.moveTo(ex - 4, faceY - 4);
+            ctx.lineTo(ex + 4, faceY + 4);
+            ctx.moveTo(ex + 4, faceY - 4);
+            ctx.lineTo(ex - 4, faceY + 4);
+            ctx.stroke();
+          });
+          // ぐるぐる星
+          ctx.fillStyle = '#ffe066';
+          const starAngle = m.animTimer * 18;
+          for (let s = 0; s < 3; s++) {
+            const sx = Math.cos(starAngle + s * 2.1) * 18;
+            const sy = -moleH - 6 + Math.sin(starAngle + s * 2.1) * 5;
+            ctx.fillRect(sx - 2, sy - 2, 4, 4);
+          }
+        } else {
+          // 通常・逃げ時の目
+          if (m.type === 'fast') {
+            // 黒もぐらのクールなサングラス
+            ctx.fillStyle = '#111';
+            ctx.fillRect(-15, faceY - 5, 13, 8);
+            ctx.fillRect(2, faceY - 5, 13, 8);
+            ctx.fillRect(-2, faceY - 3, 4, 3);
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.fillRect(-13, faceY - 4, 4, 2);
+            ctx.fillRect(4, faceY - 4, 4, 2);
+          } else {
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(-8, faceY - 1, 3.3, 0, Math.PI * 2);
+            ctx.arc(8, faceY - 1, 3.3, 0, Math.PI * 2);
+            ctx.fill();
+            // 目のハイライト
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(-9.5, faceY - 3, 2, 2);
+            ctx.fillRect(6.5, faceY - 3, 2, 2);
+          }
+
+          // 金もぐらの王冠風キラキラ
+          if (m.type === 'gold') {
+            ctx.fillStyle = '#fff59d';
+            ctx.beginPath();
+            ctx.arc(-10, -moleH + 6, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        // 鼻とヒゲ
+        ctx.fillStyle = m.cfg.noseColor;
+        ctx.beginPath();
+        ctx.ellipse(0, faceY + 6, 6.5, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-10, faceY + 6); ctx.lineTo(-19, faceY + 4);
+        ctx.moveTo(-10, faceY + 9); ctx.lineTo(-19, faceY + 10);
+        ctx.moveTo(10, faceY + 6); ctx.lineTo(19, faceY + 4);
+        ctx.moveTo(10, faceY + 9); ctx.lineTo(19, faceY + 10);
+        ctx.stroke();
+
+        ctx.restore(); // クリップ解除
+
+        // 地表のモグラ塚（土盛り）
+        ctx.fillStyle = '#5c3310';
+        ctx.beginPath();
+        ctx.ellipse(baseX, surfaceY + 4, 28, 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#8d5524';
+        ctx.beginPath();
+        ctx.ellipse(baseX - 10, surfaceY + 2, 11, 4.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(baseX + 11, surfaceY + 2, 10, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // ピコピコハンマーの振り下ろし演出
+      function drawHammer(h) {
+        const p = h.timer / h.duration;
+        const swingAngle = p < 0.35
+          ? -0.9 + (p / 0.35) * 1.15
+          : 0.25 - ((p - 0.35) / 0.65) * 0.2;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - Math.max(0, p - 0.55) / 0.45);
+        ctx.translate(h.x + 28, h.y + 8);
+        ctx.rotate(swingAngle);
+
+        // 柄
+        ctx.fillStyle = '#d7a86e';
+        ctx.strokeStyle = '#4e342e';
+        ctx.lineWidth = 2;
+        ctx.fillRect(-5, -4, 10, 38);
+        ctx.strokeRect(-5, -4, 10, 38);
+
+        // ハンマーヘッド
+        ctx.fillStyle = h.hitSuccess ? '#ef5350' : '#78909c';
+        ctx.beginPath();
+        ctx.roundRect(-24, -22, 48, 22, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // 黄色の縁取り
+        ctx.fillStyle = '#ffe066';
+        ctx.fillRect(-24, -18, 6, 14);
+        ctx.fillRect(18, -18, 6, 14);
+
+        ctx.restore();
+
+        // ヒット時の衝撃リング
+        if (h.hitSuccess && p < 0.55) {
+          ctx.save();
+          ctx.strokeStyle = '#fff176';
+          ctx.globalAlpha = 1 - p / 0.55;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, 14 + p * 60, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      function render() {
+        ctx.save();
+
+        // 画面シェイク
+        if (state.shakeTimer > 0) {
+          const sx = rand(-state.shakeIntensity, state.shakeIntensity);
+          const sy = rand(-state.shakeIntensity, state.shakeIntensity);
+          ctx.translate(sx, sy);
+        }
+
+        // 1. キャッシュ済み背景（空・地層・芝生）
+        ctx.drawImage(bgCache, 0, 0);
+
+        // 2. 動く雲
+        for (const c of state.clouds) {
+          drawCloud(c.x, c.y, c.w);
+        }
+
+        // 3. 地中エリアにクリップして波状軌跡を描画
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, surfaceY + 2, width, height - surfaceY);
+        ctx.clip();
+
+        // フェードアウト中の過去の軌跡
+        for (const ft of state.fadingTrails) {
+          drawWaveTrail(ft.points, ft.color, ft.alpha);
+        }
+
+        // 現在アクティブなもぐらの軌跡
+        for (const m of state.moles) {
+          drawWaveTrail(m.trail, m.cfg.trailColor, 0.96);
+        }
+
+        // 地中を登っているもぐら本体
+        for (const m of state.moles) {
+          if (m.state === 'climbing') {
+            drawClimbingMole(m);
+          }
+        }
+        ctx.restore();
+
+        // 4. 地上に出現したもぐら
+        for (const m of state.moles) {
+          if (m.state !== 'climbing') {
+            drawSurfacedMole(m);
+          }
+        }
+
+        // 5. パーティクル
+        for (const p of state.particles) {
+          ctx.save();
+          ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+          ctx.restore();
+        }
+
+        // 6. ハンマー
+        for (const h of state.hammers) {
+          drawHammer(h);
+        }
+
+        // 7. フローティングスコア・テキスト
+        for (const ft of state.floatingTexts) {
+          ctx.save();
+          ctx.globalAlpha = clamp(ft.life / ft.maxLife, 0, 1);
+          ctx.font = `900 ${ft.size}px "Hiragino Kaku Gothic ProN", "Yu Gothic", monospace, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.strokeText(ft.text, ft.x, ft.y);
+          ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        }
+
+        // 8. 逃げられた時の赤いダメージフラッシュ
+        if (state.damageFlash > 0) {
+          ctx.fillStyle = `rgba(239, 83, 80, ${state.damageFlash * 0.28})`;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        ctx.restore();
+      }
+
+      /* =========================================================
+         メインゲームループ
+         ========================================================= */
+      let lastTime = 0;
+      function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        update(dt);
+        render();
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      /* =========================================================
+         イベント登録と初期化
+         ========================================================= */
+      startBtn.addEventListener('click', startGame);
+      retryBtn.addEventListener('click', startGame);
+
+      soundToggleBtn.addEventListener('click', () => {
+        const next = !sound.enabled;
+        sound.setEnabled(next);
+        soundToggleBtn.textContent = next ? '🔊 音: ON' : '🔇 音: OFF';
+        soundToggleBtn.classList.toggle('muted', !next);
+        soundToggleBtn.setAttribute('aria-pressed', String(next));
+      });
+
+      window.addEventListener('resize', resizeCanvas);
+
+      window.onload = () => {
+        state.highScore = loadHighScore();
+        resizeCanvas();
+        updateHUD();
+        requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
