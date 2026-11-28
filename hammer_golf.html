@@ -1,0 +1,2517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ハンマーゴルフ 9H - Hammer Throw Golf</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ベース設定とフォント */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #163322;
+      font-family: 'M PLUS Rounded 1c', system-ui, -apple-system, sans-serif;
+      touch-action: manipulation;
+    }
+
+    /* メインキャンバス */
+    #courseCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+    }
+
+    /* グラスモーフィズムHUD */
+    .glass-panel {
+      background: rgba(15, 29, 22, 0.78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    /* 左下ハンマー投げ専用ウィンドウ */
+    #hammerPanel {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      width: 224px;
+      height: 258px;
+      border-radius: 22px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px 10px;
+      transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    #hammerPanel.spinning {
+      border-color: rgba(250, 204, 21, 0.75);
+      box-shadow: 0 0 28px rgba(250, 204, 21, 0.32), 0 10px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    #hammerPanel.max-power {
+      border-color: rgba(248, 113, 113, 0.95);
+      box-shadow: 0 0 34px rgba(239, 68, 68, 0.55), 0 10px 32px rgba(0, 0, 0, 0.55);
+      animation: panelShake 0.12s infinite;
+    }
+
+    @keyframes panelShake {
+      0% { transform: translate(0, 0); }
+      25% { transform: translate(1.5px, -1px); }
+      50% { transform: translate(-1.5px, 1px); }
+      75% { transform: translate(1px, 1.5px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    #hammerCanvas {
+      width: 196px;
+      height: 196px;
+      border-radius: 50%;
+      display: block;
+    }
+
+    /* モバイル向けのレスポンシブ調整 */
+    @media (max-width: 640px) {
+      #hammerPanel {
+        left: 10px;
+        bottom: 10px;
+        width: 168px;
+        height: 200px;
+        padding: 6px 8px 8px;
+        border-radius: 18px;
+      }
+      #hammerCanvas {
+        width: 146px;
+        height: 146px;
+      }
+    }
+
+    /* ボタンスタイル */
+    .game-btn {
+      background: linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.05) 100%);
+      border: 1px solid rgba(255,255,255,0.2);
+      transition: all 0.15s ease;
+    }
+    .game-btn:hover {
+      background: linear-gradient(180deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.1) 100%);
+      transform: translateY(-1px);
+    }
+    .game-btn:active {
+      transform: translateY(1px) scale(0.97);
+    }
+
+    .primary-btn {
+      background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
+      border: 1px solid #4ade80;
+      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.4);
+      transition: all 0.15s ease;
+    }
+    .primary-btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+    .primary-btn:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    /* トースト通知 */
+    #toastBanner {
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    #toastBanner.hidden-toast {
+      opacity: 0;
+      transform: translate(-50%, -14px);
+      pointer-events: none;
+    }
+
+    /* スコア表スクロール */
+    .score-scroll::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    .score-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.25);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="text-white">
+
+  <!-- メインゴルフコース描画用Canvas -->
+  <canvas id="courseCanvas"></canvas>
+
+  <!-- 上部HUDバー -->
+  <header class="fixed top-2 left-2 right-2 sm:top-3 sm:left-3 sm:right-3 z-30 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- 左側：ホール情報・スコア -->
+    <div class="glass-panel rounded-2xl px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2.5 sm:gap-4 pointer-events-auto">
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center justify-center bg-emerald-500 text-emerald-950 font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-full shadow">
+          HOLE <span id="hudHoleNum" class="ml-1">1/9</span>
+        </span>
+        <div class="hidden md:block leading-tight">
+          <div id="hudHoleName" class="text-xs font-bold text-emerald-200">はじまりのストレート</div>
+        </div>
+      </div>
+
+      <div class="h-6 w-px bg-white/15"></div>
+
+      <div class="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
+        <div class="text-center leading-tight">
+          <div class="text-[10px] text-emerald-300/80 font-bold">PAR</div>
+          <div id="hudPar" class="font-black text-base sm:text-lg leading-none">3</div>
+        </div>
+        <div class="text-center leading-tight">
+          <div class="text-[10px] text-amber-300/80 font-bold">打数</div>
+          <div id="hudStrokes" class="font-black text-base sm:text-lg text-amber-300 leading-none">0</div>
+        </div>
+        <div class="text-center leading-tight">
+          <div class="text-[10px] text-sky-300/80 font-bold">合計</div>
+          <div id="hudTotal" class="font-black text-base sm:text-lg text-sky-300 leading-none">E</div>
+        </div>
+      </div>
+
+      <div class="h-6 w-px bg-white/15 hidden sm:block"></div>
+
+      <!-- 現在の地形バッジ -->
+      <div class="hidden sm:flex items-center gap-1.5">
+        <span class="text-[10px] text-white/60 font-bold">地形</span>
+        <span id="hudTerrain" class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-600/80 text-white border border-emerald-300/30">
+          ティー
+        </span>
+      </div>
+    </div>
+
+    <!-- 中央：操作ヒント（大画面のみ） -->
+    <div id="hudHint" class="hidden xl:flex glass-panel rounded-full px-4 py-1.5 text-xs font-bold text-emerald-100 items-center gap-2 pointer-events-none">
+      <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+      <span id="hudHintText">クリック または スペースキーで回転スタート → もう一度押してリリース！</span>
+    </div>
+
+    <!-- 右側：コントロールボタン群 -->
+    <div class="glass-panel rounded-2xl px-2 py-1.5 flex items-center gap-1.5 pointer-events-auto">
+      <button id="btnCamera" class="game-btn rounded-xl px-2.5 py-1.5 text-xs font-bold flex items-center gap-1 text-emerald-100" title="カメラ切替（全体 / 追従）">
+        <span>🎥</span>
+        <span id="btnCameraText" class="hidden sm:inline">自動追従</span>
+      </button>
+      <button id="btnSound" class="game-btn rounded-xl px-2.5 py-1.5 text-xs font-bold flex items-center gap-1 text-emerald-100" title="サウンドON/OFF">
+        <span id="btnSoundIcon">🔊</span>
+        <span class="hidden sm:inline">音</span>
+      </button>
+      <button id="btnRetry" class="game-btn rounded-xl px-2.5 py-1.5 text-xs font-bold flex items-center gap-1 text-amber-200" title="このホールをやり直す">
+        <span>↺</span>
+        <span class="hidden sm:inline">リトライ</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- モバイル用：地形＆距離のサブピル（右上付近） -->
+  <div class="sm:hidden fixed top-14 left-2 z-20 glass-panel rounded-full px-3 py-1 text-[11px] font-bold flex items-center gap-2 pointer-events-none">
+    <span id="hudTerrainMobile" class="text-emerald-300">ティー</span>
+    <span class="text-white/30">|</span>
+    <span id="hudDistMobile" class="text-white/90">残り --m</span>
+  </div>
+
+  <!-- 残り距離インジケーター（右下） -->
+  <div class="fixed bottom-4 right-4 z-20 glass-panel rounded-2xl px-3.5 py-2 text-right pointer-events-none">
+    <div class="text-[10px] font-bold text-emerald-300/80 tracking-wider">カップまで</div>
+    <div class="flex items-baseline justify-end gap-1">
+      <span id="hudDist" class="text-xl sm:text-2xl font-black text-white tabular-nums">--</span>
+      <span class="text-xs font-bold text-emerald-200">m</span>
+    </div>
+  </div>
+
+  <!-- 左下：ハンマー投げ専用ウィンドウ -->
+  <div id="hammerPanel" class="glass-panel cursor-pointer">
+    <div class="w-full flex items-center justify-between px-1">
+      <span class="text-[10px] sm:text-xs font-extrabold text-amber-300 tracking-wide flex items-center gap-1">
+        <span>🔨</span> ハンマー投擲
+      </span>
+      <span id="hammerPowerBadge" class="text-[11px] sm:text-xs font-black px-2 py-0.5 rounded-full bg-white/10 text-emerald-200 tabular-nums">
+        0%
+      </span>
+    </div>
+
+    <!-- サブCanvas（投擲サークル＋選手＋ハンマー＋パワーゲージ） -->
+    <canvas id="hammerCanvas" width="220" height="220"></canvas>
+
+    <!-- 速度・ガイド表示 -->
+    <div class="w-full flex items-center justify-between px-1 text-[10px] sm:text-[11px] font-bold">
+      <span id="hammerActionLabel" class="text-emerald-200 truncate">クリック/SPACEで開始</span>
+      <span id="hammerSpeedLabel" class="text-white/80 tabular-nums shrink-0 ml-1">0 m/s</span>
+    </div>
+  </div>
+
+  <!-- トースト通知（ハザード・OB・ナイスショットなど） -->
+  <div id="toastBanner" class="hidden-toast fixed top-20 left-1/2 -translate-x-1/2 z-40 glass-panel rounded-full px-5 py-2 text-sm sm:text-base font-black text-white shadow-2xl border border-white/25 pointer-events-none whitespace-nowrap">
+    メッセージ
+  </div>
+
+  <!-- スタート画面オーバーレイ -->
+  <div id="startModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+    <div class="glass-panel rounded-3xl max-w-md w-full p-6 sm:p-7 text-center border border-emerald-300/30">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-amber-400 text-3xl shadow-lg mb-3">
+        🔨⛳
+      </div>
+      <h1 class="text-2xl sm:text-3xl font-black tracking-tight text-white mb-1">
+        ハンマーゴルフ <span class="text-amber-300">9H</span>
+      </h1>
+      <p class="text-xs sm:text-sm text-emerald-200/90 font-bold mb-5">
+        遠心力でぶっ飛ばせ！新感覚・ハンマー投げゴルフ
+      </p>
+
+      <div class="bg-black/30 rounded-2xl p-4 text-left text-xs sm:text-sm space-y-2.5 mb-6 border border-white/10">
+        <div class="flex items-start gap-2.5">
+          <span class="bg-amber-400 text-amber-950 font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-xs mt-0.5">1</span>
+          <p class="text-white/90"><strong>クリック / スペース</strong>で左下の選手がハンマーを回し始めます。</p>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <span class="bg-emerald-400 text-emerald-950 font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-xs mt-0.5">2</span>
+          <p class="text-white/90">回転は<strong>だんだん高速化</strong>！序盤なら優しいアプローチ、高速なら池や木を越える豪快ショット！</p>
+        </div>
+        <div class="flex items-start gap-2.5">
+          <span class="bg-sky-400 text-sky-950 font-black rounded-full w-5 h-5 flex items-center justify-center shrink-0 text-xs mt-0.5">3</span>
+          <p class="text-white/90">点線ガイドの<strong>接線方向</strong>に合わせて、もう一度押してリリース！全9ホール制覇を目指そう。</p>
+        </div>
+      </div>
+
+      <button id="btnStartGame" class="primary-btn w-full py-3.5 rounded-2xl font-black text-base sm:text-lg text-white tracking-wide cursor-pointer">
+        ティーオフ！（プレイ開始）
+      </button>
+    </div>
+  </div>
+
+  <!-- ホールクリアオーバーレイ -->
+  <div id="holeClearModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs p-4">
+    <div class="glass-panel rounded-3xl max-w-sm w-full p-6 text-center border border-amber-300/40">
+      <div id="clearBadge" class="inline-block px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-xs font-extrabold mb-2 border border-amber-300/30">
+        HOLE 1 CLEAR!
+      </div>
+      <h2 id="clearResultTitle" class="text-3xl sm:text-4xl font-black text-white mb-1 drop-shadow">
+        バーディ！
+      </h2>
+      <p id="clearResultSub" class="text-sm font-bold text-emerald-200 mb-5">
+        PAR 3 を 2打 でカップイン
+      </p>
+
+      <div class="grid grid-cols-3 gap-2 bg-black/30 rounded-2xl p-3 mb-5 border border-white/10">
+        <div>
+          <div class="text-[10px] text-white/60 font-bold">PAR</div>
+          <div id="clearPar" class="text-xl font-black">3</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-amber-300/80 font-bold">打数</div>
+          <div id="clearStrokes" class="text-xl font-black text-amber-300">2</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-sky-300/80 font-bold">トータル</div>
+          <div id="clearTotal" class="text-xl font-black text-sky-300">-1</div>
+        </div>
+      </div>
+
+      <button id="btnNextHole" class="primary-btn w-full py-3 rounded-2xl font-black text-base text-white cursor-pointer">
+        次のホールへ進む →
+      </button>
+      <div class="text-[11px] text-white/50 mt-2 font-bold">（クリック または スペースキーでも進行）</div>
+    </div>
+  </div>
+
+  <!-- 9ホール終了・スコアカード画面 -->
+  <div id="scorecardModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md p-3 sm:p-5">
+    <div class="glass-panel rounded-3xl max-w-2xl w-full p-5 sm:p-7 text-center border border-emerald-300/35 max-h-[92vh] overflow-y-auto score-scroll">
+      <div class="text-xs font-extrabold tracking-widest text-amber-300 uppercase mb-1">9 HOLES COMPLETED</div>
+      <h2 class="text-2xl sm:text-3xl font-black text-white mb-4">ラウンド結果スコアカード</h2>
+
+      <!-- ランク＆合計サマリー -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/35 rounded-2xl p-4 mb-5 border border-white/10">
+        <div class="flex items-center gap-3">
+          <div id="finalRankBadge" class="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-orange-500 text-amber-950 font-black text-4xl flex items-center justify-center shadow-lg">
+            S
+          </div>
+          <div class="text-left">
+            <div class="text-[11px] text-emerald-200/80 font-bold">称号</div>
+            <div id="finalRankTitle" class="text-lg sm:text-xl font-black text-amber-300">伝説のハンマーマスター</div>
+          </div>
+        </div>
+        <div class="hidden sm:block h-12 w-px bg-white/15"></div>
+        <div class="flex items-center gap-5">
+          <div>
+            <div class="text-[10px] text-white/60 font-bold">TOTAL PAR</div>
+            <div id="finalPar" class="text-xl font-black">35</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-amber-300/80 font-bold">合計打数</div>
+            <div id="finalStrokes" class="text-2xl font-black text-amber-300">32</div>
+          </div>
+          <div>
+            <div class="text-[10px] text-sky-300/80 font-bold">スコア</div>
+            <div id="finalDiff" class="text-2xl font-black text-sky-300">-3</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 9ホール詳細テーブル -->
+      <div class="overflow-x-auto score-scroll mb-6 rounded-2xl border border-white/15 bg-black/25">
+        <table class="w-full text-xs sm:text-sm text-center border-collapse">
+          <thead>
+            <tr class="bg-white/10 text-emerald-200 font-extrabold">
+              <th class="py-2 px-2">HOLE</th>
+              <th class="py-2 px-2">1</th>
+              <th class="py-2 px-2">2</th>
+              <th class="py-2 px-2">3</th>
+              <th class="py-2 px-2">4</th>
+              <th class="py-2 px-2">5</th>
+              <th class="py-2 px-2">6</th>
+              <th class="py-2 px-2">7</th>
+              <th class="py-2 px-2">8</th>
+              <th class="py-2 px-2">9</th>
+              <th class="py-2 px-2.5 bg-emerald-500/20">計</th>
+            </tr>
+          </thead>
+          <tbody id="scorecardBody" class="font-bold">
+            <!-- JSで動的生成 -->
+          </tbody>
+        </table>
+      </div>
+
+      <button id="btnPlayAgain" class="primary-btn px-8 py-3.5 rounded-2xl font-black text-base sm:text-lg text-white cursor-pointer">
+        最初から遊ぶ（全9ホール）
+      </button>
+    </div>
+  </div>
+
+  <script>
+  /**
+   * ============================================================================
+   * ハンマーゴルフ 9H (Hammer Throw + Golf)
+   * 単一ファイル実装：HTML5 Canvas + Web Audio API
+   * ============================================================================
+   */
+  (function () {
+    'use strict';
+
+    // ------------------------------------------------------------------------
+    // 定数・ワールド設計
+    // ------------------------------------------------------------------------
+    const WORLD_W = 1200;
+    const WORLD_H = 720;
+    const PIXELS_PER_METER = 4.5; // 距離表示用の換算係数
+
+    // ハンマー回転パラメータ
+    const MIN_OMEGA = 1.65;       // 回転開始時の角速度 (rad/s)
+    const MAX_OMEGA = 10.6;       // 最大角速度 (rad/s)
+    const ACCEL_TIME = 3.1;       // 0% -> 100% に到達するまでの時間 (秒)
+
+    // ゴルフ物理パラメータ
+    const MIN_SHOT_SPEED = 78;    // 最小初速 (px/s) - 優しいパット用
+    const MAX_SHOT_SPEED = 690;   // 最大初速 (px/s) - フルショット
+    const GRAVITY = 560;          // 重力加速度 (px/s^2)
+    const CUP_RADIUS = 13.5;      // カップ半径 (px)
+    const CUP_MAX_SPEED = 245;    // カップイン許容速度 (px/s)
+    const TREE_HEIGHT = 48;       // 木の枝葉の高さ (z > TREE_HEIGHT なら飛び越えられる)
+
+    // 地形ラベルとバッジ色
+    const TERRAIN_INFO = {
+      tee:     { label: 'ティー',       cls: 'bg-emerald-600/85 text-white border-emerald-300/40' },
+      fairway: { label: 'フェアウェイ', cls: 'bg-green-600/85 text-white border-green-300/40' },
+      green:   { label: 'グリーン',     cls: 'bg-lime-500/90 text-lime-950 border-lime-200/50' },
+      rough:   { label: 'ラフ',         cls: 'bg-emerald-900/90 text-emerald-200 border-emerald-500/40' },
+      bunker:  { label: 'バンカー',     cls: 'bg-amber-300/90 text-amber-950 border-amber-100/60' },
+      water:   { label: '池',           cls: 'bg-sky-600/90 text-white border-sky-300/50' },
+      ob:      { label: 'OB',           cls: 'bg-rose-600/90 text-white border-rose-300/50' }
+    };
+
+    // ------------------------------------------------------------------------
+    // 全9ホールのコースデータ定義
+    // 描画レイヤー順（下→上）：OB(森) → rough → water → fairway(帯) → bunker → green → tee
+    // 島構造(Hole 5など)は water の後に fairway を描画するため、自動的に安全な島として判定される
+    // ------------------------------------------------------------------------
+    const HOLES = [
+      // Hole 1 (Par 3): 練習用のストレートコース
+      {
+        num: 1, par: 3, name: 'はじまりのストレート',
+        tee: { x: 260, y: 370 },
+        cup: { x: 960, y: 360 },
+        rough: [
+          { type: 'capsule', x1: 230, y1: 370, x2: 980, y2: 360, r: 150 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 250, y1: 370, x2: 950, y2: 360, r: 78 }
+        ],
+        green: { x: 955, y: 360, rx: 64, ry: 54 },
+        bunkers: [
+          { x: 640, y: 268, rx: 46, ry: 24, rot: 0.1 },
+          { x: 865, y: 445, rx: 44, ry: 26, rot: -0.2 }
+        ],
+        water: [],
+        trees: [
+          { x: 350, y: 185, r: 24 }, { x: 420, y: 170, r: 28 }, { x: 520, y: 180, r: 25 },
+          { x: 760, y: 185, r: 26 }, { x: 860, y: 205, r: 24 },
+          { x: 390, y: 550, r: 26 }, { x: 560, y: 545, r: 28 }, { x: 720, y: 535, r: 25 }
+        ]
+      },
+
+      // Hole 2 (Par 4): 右ドッグレッグとバンカー
+      {
+        num: 2, par: 4, name: '右ドッグレッグの試練',
+        tee: { x: 210, y: 200 },
+        cup: { x: 965, y: 540 },
+        rough: [
+          { type: 'capsule', x1: 200, y1: 200, x2: 860, y2: 205, r: 130 },
+          { type: 'capsule', x1: 860, y1: 205, x2: 960, y2: 540, r: 135 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 210, y1: 200, x2: 855, y2: 205, r: 66 },
+          { type: 'capsule', x1: 855, y1: 205, x2: 955, y2: 530, r: 68 }
+        ],
+        green: { x: 960, y: 535, rx: 64, ry: 58 },
+        bunkers: [
+          { x: 945, y: 175, rx: 42, ry: 28, rot: 0.65 },
+          { x: 765, y: 315, rx: 48, ry: 28, rot: 0.45 },
+          { x: 850, y: 535, rx: 32, ry: 46, rot: 0.1 }
+        ],
+        water: [],
+        trees: [
+          { x: 530, y: 360, r: 28 }, { x: 600, y: 395, r: 30 }, { x: 675, y: 420, r: 28 },
+          { x: 640, y: 495, r: 26 }, { x: 710, y: 545, r: 28 },
+          { x: 420, y: 90, r: 24 }, { x: 620, y: 85, r: 26 }, { x: 1055, y: 320, r: 25 }
+        ]
+      },
+
+      // Hole 3 (Par 3): 池越えのショートホール
+      {
+        num: 3, par: 3, name: '蒼い池越え',
+        tee: { x: 250, y: 360 },
+        cup: { x: 950, y: 345 },
+        rough: [
+          { type: 'capsule', x1: 240, y1: 360, x2: 960, y2: 350, r: 195 }
+        ],
+        water: [
+          { type: 'ellipse', x: 600, y: 365, rx: 225, ry: 175, rot: -0.05 }
+        ],
+        fairway: [
+          { type: 'ellipse', x: 265, y: 360, rx: 95, ry: 78, rot: 0 },
+          { type: 'ellipse', x: 935, y: 350, rx: 112, ry: 98, rot: 0 }
+        ],
+        green: { x: 945, y: 348, rx: 72, ry: 62 },
+        bunkers: [
+          { x: 1030, y: 270, rx: 34, ry: 24, rot: 0.5 },
+          { x: 1020, y: 435, rx: 38, ry: 24, rot: -0.4 }
+        ],
+        trees: [
+          { x: 320, y: 205, r: 24 }, { x: 860, y: 175, r: 26 },
+          { x: 980, y: 185, r: 25 }, { x: 880, y: 530, r: 27 }
+        ]
+      },
+
+      // Hole 4 (Par 4): 木が立ち並ぶ左ドッグレッグ
+      {
+        num: 4, par: 4, name: '森の左ドッグレッグ',
+        tee: { x: 330, y: 545 },
+        cup: { x: 885, y: 165 },
+        rough: [
+          { type: 'capsule', x1: 320, y1: 545, x2: 890, y2: 535, r: 125 },
+          { type: 'capsule', x1: 890, y1: 535, x2: 885, y2: 165, r: 125 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 330, y1: 545, x2: 885, y2: 535, r: 64 },
+          { type: 'capsule', x1: 885, y1: 535, x2: 885, y2: 175, r: 64 }
+        ],
+        green: { x: 885, y: 170, rx: 64, ry: 54 },
+        bunkers: [
+          { x: 985, y: 550, rx: 38, ry: 34, rot: -0.3 },
+          { x: 790, y: 210, rx: 28, ry: 42, rot: -0.15 }
+        ],
+        trees: [
+          // 内角に立ち並ぶ木々
+          { x: 560, y: 390, r: 28 }, { x: 635, y: 380, r: 30 }, { x: 710, y: 375, r: 27 },
+          { x: 620, y: 305, r: 29 }, { x: 695, y: 295, r: 28 }, { x: 660, y: 220, r: 26 },
+          { x: 735, y: 440, r: 24 },
+          // 外周のアクセント
+          { x: 500, y: 650, r: 25 }, { x: 720, y: 650, r: 25 },
+          { x: 1020, y: 360, r: 26 }, { x: 1015, y: 250, r: 24 }
+        ],
+        water: []
+      },
+
+      // Hole 5 (Par 5): 中央に池と島があるロングホール
+      {
+        num: 5, par: 5, name: '浮島のロングコース',
+        tee: { x: 185, y: 360 },
+        cup: { x: 1045, y: 360 },
+        rough: [
+          { type: 'capsule', x1: 185, y1: 360, x2: 1045, y2: 360, r: 230 }
+        ],
+        water: [
+          { type: 'ellipse', x: 615, y: 375, rx: 270, ry: 170, rot: 0 }
+        ],
+        fairway: [
+          // ティー側フェアウェイ
+          { type: 'ellipse', x: 225, y: 360, rx: 115, ry: 82, rot: 0 },
+          // 上側の迂回ルート
+          { type: 'capsule', x1: 260, y1: 275, x2: 520, y2: 165, r: 46 },
+          { type: 'capsule', x1: 520, y1: 165, x2: 740, y2: 165, r: 46 },
+          { type: 'capsule', x1: 740, y1: 165, x2: 980, y2: 285, r: 46 },
+          // 中央の浮島（ショートカットの要）
+          { type: 'ellipse', x: 615, y: 375, rx: 95, ry: 68, rot: 0 },
+          // グリーン側フェアウェイ
+          { type: 'ellipse', x: 1015, y: 360, rx: 110, ry: 90, rot: 0 }
+        ],
+        green: { x: 1035, y: 360, rx: 66, ry: 58 },
+        bunkers: [
+          { x: 615, y: 425, rx: 38, ry: 18, rot: 0 },
+          { x: 930, y: 295, rx: 32, ry: 22, rot: -0.4 },
+          { x: 935, y: 430, rx: 34, ry: 22, rot: 0.4 }
+        ],
+        trees: [
+          { x: 390, y: 120, r: 24 }, { x: 840, y: 120, r: 24 },
+          { x: 430, y: 580, r: 26 }, { x: 800, y: 580, r: 26 }
+        ]
+      },
+
+      // Hole 6 (Par 3): バンカーに囲まれたグリーン
+      {
+        num: 6, par: 3, name: '砂漠の要塞',
+        tee: { x: 240, y: 380 },
+        cup: { x: 905, y: 340 },
+        rough: [
+          { type: 'capsule', x1: 230, y1: 380, x2: 915, y2: 340, r: 175 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 240, y1: 380, x2: 730, y2: 350, r: 62 },
+          { type: 'ellipse', x: 905, y: 340, rx: 135, ry: 125, rot: 0 }
+        ],
+        bunkers: [
+          // グリーンを四方から囲むバンカー群
+          { x: 795, y: 340, rx: 36, ry: 68, rot: 0 },
+          { x: 1015, y: 340, rx: 34, ry: 68, rot: 0 },
+          { x: 905, y: 235, rx: 72, ry: 30, rot: 0 },
+          { x: 905, y: 445, rx: 72, ry: 30, rot: 0 },
+          { x: 540, y: 280, rx: 45, ry: 22, rot: -0.15 }
+        ],
+        green: { x: 905, y: 340, rx: 66, ry: 62 },
+        water: [],
+        trees: [
+          { x: 420, y: 215, r: 26 }, { x: 640, y: 210, r: 25 },
+          { x: 460, y: 520, r: 27 }, { x: 670, y: 515, r: 26 },
+          { x: 1085, y: 225, r: 26 }, { x: 1085, y: 455, r: 26 }
+        ]
+      },
+
+      // Hole 7 (Par 4): S字カーブのテクニカルコース
+      {
+        num: 7, par: 4, name: '蛇行するS字ロード',
+        tee: { x: 185, y: 195 },
+        cup: { x: 1035, y: 490 },
+        rough: [
+          { type: 'capsule', x1: 185, y1: 195, x2: 470, y2: 510, r: 120 },
+          { type: 'capsule', x1: 470, y1: 510, x2: 780, y2: 210, r: 120 },
+          { type: 'capsule', x1: 780, y1: 210, x2: 1035, y2: 490, r: 120 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 185, y1: 195, x2: 470, y2: 510, r: 58 },
+          { type: 'capsule', x1: 470, y1: 510, x2: 780, y2: 210, r: 58 },
+          { type: 'capsule', x1: 780, y1: 210, x2: 1030, y2: 485, r: 58 }
+        ],
+        green: { x: 1030, y: 485, rx: 60, ry: 55 },
+        bunkers: [
+          { x: 375, y: 540, rx: 42, ry: 24, rot: 0.3 },
+          { x: 780, y: 125, rx: 46, ry: 24, rot: 0 },
+          { x: 945, y: 525, rx: 32, ry: 24, rot: 0.4 }
+        ],
+        water: [],
+        trees: [
+          { x: 475, y: 270, r: 28 }, { x: 525, y: 215, r: 26 }, { x: 575, y: 165, r: 24 },
+          { x: 760, y: 425, r: 28 }, { x: 810, y: 485, r: 27 }, { x: 715, y: 495, r: 25 },
+          { x: 260, y: 390, r: 24 }, { x: 980, y: 260, r: 25 }
+        ]
+      },
+
+      // Hole 8 (Par 4): 大きな池の縁を攻めるコース
+      {
+        num: 8, par: 4, name: '湖畔のリスクショット',
+        tee: { x: 215, y: 195 },
+        cup: { x: 970, y: 520 },
+        rough: [
+          { type: 'capsule', x1: 215, y1: 195, x2: 880, y2: 160, r: 125 },
+          { type: 'capsule', x1: 880, y1: 160, x2: 990, y2: 520, r: 135 },
+          { type: 'ellipse', x: 585, y: 465, rx: 330, ry: 215, rot: 0.08 }
+        ],
+        water: [
+          { type: 'ellipse', x: 585, y: 475, rx: 285, ry: 185, rot: 0.08 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 215, y1: 195, x2: 560, y2: 165, r: 62 },
+          { type: 'capsule', x1: 560, y1: 165, x2: 890, y2: 205, r: 62 },
+          { type: 'capsule', x1: 890, y1: 205, x2: 975, y2: 515, r: 62 }
+        ],
+        green: { x: 970, y: 515, rx: 62, ry: 56 },
+        bunkers: [
+          { x: 560, y: 95, rx: 48, ry: 22, rot: 0 },
+          { x: 1055, y: 365, rx: 26, ry: 48, rot: -0.1 },
+          { x: 1045, y: 565, rx: 38, ry: 24, rot: -0.4 }
+        ],
+        trees: [
+          { x: 350, y: 95, r: 24 }, { x: 750, y: 90, r: 26 },
+          { x: 1045, y: 195, r: 26 }, { x: 1090, y: 275, r: 24 }
+        ]
+      },
+
+      // Hole 9 (Par 5): 池・バンカー・木が配置された最終ロングホール
+      {
+        num: 9, par: 5, name: 'チャンピオンズ・フィナーレ',
+        tee: { x: 180, y: 210 },
+        cup: { x: 1035, y: 510 },
+        rough: [
+          { type: 'capsule', x1: 180, y1: 210, x2: 610, y2: 230, r: 135 },
+          { type: 'capsule', x1: 610, y1: 230, x2: 660, y2: 495, r: 140 },
+          { type: 'capsule', x1: 660, y1: 495, x2: 1035, y2: 510, r: 150 }
+        ],
+        water: [
+          // 中盤を横切るクリーク
+          { type: 'capsule', x1: 445, y1: 110, x2: 410, y2: 360, r: 42 },
+          // グリーン手前の池
+          { type: 'ellipse', x: 860, y: 425, rx: 86, ry: 64, rot: 0.25 }
+        ],
+        fairway: [
+          { type: 'capsule', x1: 180, y1: 210, x2: 360, y2: 220, r: 62 },
+          { type: 'capsule', x1: 495, y1: 225, x2: 640, y2: 240, r: 64 },
+          { type: 'capsule', x1: 640, y1: 240, x2: 650, y2: 515, r: 62 },
+          { type: 'capsule', x1: 650, y1: 515, x2: 880, y2: 545, r: 52 },
+          { type: 'ellipse', x: 1025, y: 510, rx: 92, ry: 80, rot: 0 }
+        ],
+        green: { x: 1030, y: 510, rx: 64, ry: 56 },
+        bunkers: [
+          { x: 560, y: 150, rx: 42, ry: 22, rot: 0.1 },
+          { x: 565, y: 485, rx: 30, ry: 44, rot: 0.2 },
+          { x: 1045, y: 420, rx: 42, ry: 22, rot: 0.15 },
+          { x: 965, y: 590, rx: 44, ry: 22, rot: -0.2 }
+        ],
+        trees: [
+          { x: 310, y: 345, r: 26 }, { x: 515, y: 355, r: 27 },
+          { x: 755, y: 245, r: 28 }, { x: 790, y: 315, r: 25 },
+          { x: 730, y: 635, r: 26 }, { x: 1120, y: 410, r: 24 }
+        ]
+      }
+    ];
+
+    // ------------------------------------------------------------------------
+    // DOM参照
+    // ------------------------------------------------------------------------
+    const courseCanvas = document.getElementById('courseCanvas');
+    const ctx = courseCanvas.getContext('2d');
+    const hammerCanvas = document.getElementById('hammerCanvas');
+    const hCtx = hammerCanvas.getContext('2d');
+
+    const hammerPanel = document.getElementById('hammerPanel');
+    const hammerPowerBadge = document.getElementById('hammerPowerBadge');
+    const hammerActionLabel = document.getElementById('hammerActionLabel');
+    const hammerSpeedLabel = document.getElementById('hammerSpeedLabel');
+
+    const hudHoleNum = document.getElementById('hudHoleNum');
+    const hudHoleName = document.getElementById('hudHoleName');
+    const hudPar = document.getElementById('hudPar');
+    const hudStrokes = document.getElementById('hudStrokes');
+    const hudTotal = document.getElementById('hudTotal');
+    const hudTerrain = document.getElementById('hudTerrain');
+    const hudTerrainMobile = document.getElementById('hudTerrainMobile');
+    const hudDist = document.getElementById('hudDist');
+    const hudDistMobile = document.getElementById('hudDistMobile');
+    const hudHintText = document.getElementById('hudHintText');
+
+    const btnCamera = document.getElementById('btnCamera');
+    const btnCameraText = document.getElementById('btnCameraText');
+    const btnSound = document.getElementById('btnSound');
+    const btnSoundIcon = document.getElementById('btnSoundIcon');
+    const btnRetry = document.getElementById('btnRetry');
+
+    const toastBanner = document.getElementById('toastBanner');
+    const startModal = document.getElementById('startModal');
+    const btnStartGame = document.getElementById('btnStartGame');
+    const holeClearModal = document.getElementById('holeClearModal');
+    const btnNextHole = document.getElementById('btnNextHole');
+    const scorecardModal = document.getElementById('scorecardModal');
+    const btnPlayAgain = document.getElementById('btnPlayAgain');
+
+    // ------------------------------------------------------------------------
+    // Web Audio API サウンドエンジン
+    // ------------------------------------------------------------------------
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        try {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        } catch (e) {
+          // オーディオ非対応環境でもゲームは続行
+        }
+      }
+
+      // ハンマー回転の風切り音（回転数に応じて音程が上昇）
+      playSpinWhoosh(powerRatio) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const baseFreq = 135 + powerRatio * 260;
+          osc.frequency.setValueAtTime(baseFreq * 0.85, now);
+          osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, now + 0.08);
+          osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.75, now + 0.14);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.07 + powerRatio * 0.07, now + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.16);
+        } catch (e) {}
+      }
+
+      // リリース時の豪快な投擲音
+      playRelease(powerRatio) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          // スイープ音
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220 + powerRatio * 280, now);
+          osc.frequency.exponentialRampToValueAtTime(620 + powerRatio * 520, now + 0.12);
+          osc.frequency.exponentialRampToValueAtTime(140, now + 0.28);
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(1800, now);
+
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.31);
+        } catch (e) {}
+      }
+
+      // 着地・バウンド音
+      playBounce(terrain, intensity) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const vol = Math.min(0.22, Math.max(0.03, intensity * 0.18));
+
+          if (terrain === 'bunker') {
+            // 砂に落ちるザッという音（ノイズ）
+            this._playNoise(0.12, 900, vol * 0.9);
+            return;
+          }
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          const startFreq = terrain === 'green' ? 175 : (terrain === 'rough' ? 115 : 150);
+          osc.frequency.setValueAtTime(startFreq, now);
+          osc.frequency.exponentialRampToValueAtTime(48, now + 0.09);
+
+          gain.gain.setValueAtTime(vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } catch (e) {}
+      }
+
+      // 木に当たった音
+      playWoodHit() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(240, now);
+          osc.frequency.exponentialRampToValueAtTime(95, now + 0.08);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        } catch (e) {}
+      }
+
+      // 池ポチャ音
+      playSplash() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          this._playNoise(0.32, 1200, 0.22);
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(380, now);
+          osc.frequency.exponentialRampToValueAtTime(95, now + 0.24);
+          gain.gain.setValueAtTime(0.18, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.27);
+        } catch (e) {}
+      }
+
+      // カップの縁に弾かれた音
+      playLipOut() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(860, now);
+          osc.frequency.exponentialRampToValueAtTime(520, now + 0.08);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } catch (e) {}
+      }
+
+      // カップインのファンファーレ
+      playCupIn() {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const now = this.ctx.currentTime;
+          // カランッ音 + 上昇アルペジオ
+          const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+          notes.forEach((freq, i) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            const t = now + i * 0.075;
+            osc.frequency.setValueAtTime(freq, t);
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(t);
+            osc.stop(t + 0.38);
+          });
+        } catch (e) {}
+      }
+
+      _playNoise(duration, cutoff, volume) {
+        const now = this.ctx.currentTime;
+        const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(cutoff, now);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(now);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    // ------------------------------------------------------------------------
+    // ゲーム状態管理
+    // ------------------------------------------------------------------------
+    const state = {
+      phase: 'TITLE',       // TITLE | IDLE | SPINNING | FLYING | HAZARD | HOLE_IN | SCORECARD
+      holeIndex: 0,
+      strokes: 0,
+      scores: [],           // 各ホールの打数記録
+      cameraMode: 'auto',   // 'auto' (追従＋ズーム) | 'overview' (常に全体表示)
+      time: 0,
+
+      // ボール（ハンマー）状態
+      ball: {
+        x: 0, y: 0, z: 0,
+        vx: 0, vy: 0, vz: 0,
+        spinAngle: 0,
+        lastSafeX: 0, lastSafeY: 0,
+        terrain: 'tee',
+        trail: []
+      },
+
+      // 左下ハンマー回転状態
+      hammer: {
+        angle: 0,           // 現在のハンマー角度 (rad)
+        omega: MIN_OMEGA,   // 角速度 (rad/s)
+        spinTime: 0,        // 回転経過時間
+        power: 0,           // 0.0 〜 1.0
+        lastHalfTurn: 0     // 風切り音トリガー用
+      },
+
+      // カメラ状態（ワールド座標の中心とズーム倍率）
+      cam: {
+        x: WORLD_W / 2,
+        y: WORLD_H / 2,
+        zoom: 1
+      },
+
+      // パーティクル・水紋・紙吹雪
+      particles: [],
+      ripples: [],
+      confetti: [],
+      toastTimer: 0
+    };
+
+    // オフスクリーン地形キャッシュCanvas（60fps維持のためホール切替時に一括描画）
+    const terrainCache = document.createElement('canvas');
+    terrainCache.width = WORLD_W;
+    terrainCache.height = WORLD_H;
+    const tCtx = terrainCache.getContext('2d');
+
+    // ------------------------------------------------------------------------
+    // 幾何学ヘルパー関数（地形判定・衝突計算）
+    // ------------------------------------------------------------------------
+    function distToSegment(px, py, x1, y1, x2, y2) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+      let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    }
+
+    function pointInEllipse(px, py, cx, cy, rx, ry, rot = 0) {
+      const dx = px - cx;
+      const dy = py - cy;
+      const cos = Math.cos(-rot);
+      const sin = Math.sin(-rot);
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      return (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry) <= 1;
+    }
+
+    function pointInShape(px, py, s) {
+      if (s.type === 'capsule') {
+        return distToSegment(px, py, s.x1, s.y1, s.x2, s.y2) <= s.r;
+      }
+      if (s.type === 'ellipse') {
+        return pointInEllipse(px, py, s.x, s.y, s.rx, s.ry, s.rot || 0);
+      }
+      return false;
+    }
+
+    /**
+     * 指定座標の地形を判定（描画レイヤーの逆順でチェックし見た目と完全一致させる）
+     */
+    function getTerrainAt(x, y, hole) {
+      if (x < 16 || x > WORLD_W - 16 || y < 16 || y > WORLD_H - 16) {
+        return 'ob';
+      }
+      // 1. グリーン
+      if (pointInEllipse(x, y, hole.green.x, hole.green.y, hole.green.rx, hole.green.ry, 0)) {
+        return 'green';
+      }
+      // 2. バンカー
+      for (const b of hole.bunkers) {
+        if (pointInEllipse(x, y, b.x, b.y, b.rx, b.ry, b.rot || 0)) {
+          return 'bunker';
+        }
+      }
+      // 3. フェアウェイ（浮島が池の上にあるケースを含むため池より優先）
+      for (const f of hole.fairway) {
+        if (pointInShape(x, y, f)) {
+          return 'fairway';
+        }
+      }
+      // 4. 池（ウォーターハザード）
+      for (const w of hole.water) {
+        if (pointInShape(x, y, w)) {
+          return 'water';
+        }
+      }
+      // 5. ラフ
+      for (const r of hole.rough) {
+        if (pointInShape(x, y, r)) {
+          return 'rough';
+        }
+      }
+      return 'ob';
+    }
+
+    // ------------------------------------------------------------------------
+    // コース地形のオフスクリーン事前描画
+    // ------------------------------------------------------------------------
+    function drawShapePath(c, s) {
+      c.beginPath();
+      if (s.type === 'capsule') {
+        const angle = Math.atan2(s.y2 - s.y1, s.x2 - s.x1);
+        c.arc(s.x1, s.y1, s.r, angle + Math.PI / 2, angle + Math.PI * 1.5);
+        c.arc(s.x2, s.y2, s.r, angle - Math.PI / 2, angle + Math.PI / 2);
+        c.closePath();
+      } else if (s.type === 'ellipse') {
+        c.ellipse(s.x, s.y, s.rx, s.ry, s.rot || 0, 0, Math.PI * 2);
+      }
+    }
+
+    function renderTerrainCache(hole) {
+      // 1. OBエリア（深い森の背景）
+      const bgGrad = tCtx.createLinearGradient(0, 0, WORLD_W, WORLD_H);
+      bgGrad.addColorStop(0, '#133120');
+      bgGrad.addColorStop(1, '#0d2417');
+      tCtx.fillStyle = bgGrad;
+      tCtx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+      // OBエリアのさりげないドット模様（森の質感）
+      tCtx.fillStyle = 'rgba(255,255,255,0.025)';
+      for (let gx = 20; gx < WORLD_W; gx += 36) {
+        for (let gy = 20; gy < WORLD_H; gy += 36) {
+          tCtx.beginPath();
+          tCtx.arc(gx + ((gy % 72) ? 14 : 0), gy, 8, 0, Math.PI * 2);
+          tCtx.fill();
+        }
+      }
+
+      // 2. ラフ（濃い緑）
+      tCtx.save();
+      tCtx.fillStyle = '#236636';
+      tCtx.strokeStyle = '#1b502a';
+      tCtx.lineWidth = 8;
+      for (const r of hole.rough) {
+        drawShapePath(tCtx, r);
+        tCtx.fill();
+        tCtx.stroke();
+      }
+      tCtx.restore();
+
+      // 3. 池（ウォーターハザード）
+      for (const w of hole.water) {
+        tCtx.save();
+        // 水辺の浅瀬縁取り
+        drawShapePath(tCtx, w);
+        tCtx.fillStyle = '#38bdf8';
+        tCtx.fill();
+        tCtx.lineWidth = 6;
+        tCtx.strokeStyle = '#7dd3fc';
+        tCtx.stroke();
+
+        // 深い水面グラデーション
+        tCtx.clip();
+        const wg = tCtx.createRadialGradient(
+          w.x || (w.x1 + w.x2) / 2,
+          w.y || (w.y1 + w.y2) / 2,
+          20,
+          w.x || (w.x1 + w.x2) / 2,
+          w.y || (w.y1 + w.y2) / 2,
+          280
+        );
+        wg.addColorStop(0, '#0284c7');
+        wg.addColorStop(1, '#0369a1');
+        tCtx.fillStyle = wg;
+        tCtx.fillRect(0, 0, WORLD_W, WORLD_H);
+        tCtx.restore();
+      }
+
+      // 4. フェアウェイ（芝生のストライプ付き）
+      tCtx.save();
+      tCtx.beginPath();
+      for (const f of hole.fairway) {
+        if (f.type === 'capsule') {
+          const angle = Math.atan2(f.y2 - f.y1, f.x2 - f.x1);
+          tCtx.moveTo(
+            f.x1 + Math.cos(angle + Math.PI / 2) * f.r,
+            f.y1 + Math.sin(angle + Math.PI / 2) * f.r
+          );
+          tCtx.arc(f.x1, f.y1, f.r, angle + Math.PI / 2, angle + Math.PI * 1.5);
+          tCtx.arc(f.x2, f.y2, f.r, angle - Math.PI / 2, angle + Math.PI / 2);
+          tCtx.closePath();
+        } else if (f.type === 'ellipse') {
+          tCtx.moveTo(f.x + f.rx, f.y);
+          tCtx.ellipse(f.x, f.y, f.rx, f.ry, f.rot || 0, 0, Math.PI * 2);
+        }
+      }
+      tCtx.fillStyle = '#3ca149';
+      tCtx.fill();
+      tCtx.lineWidth = 4;
+      tCtx.strokeStyle = '#2d8439';
+      tCtx.stroke();
+
+      // 芝刈りストライプをクリップ描画
+      tCtx.clip();
+      tCtx.fillStyle = 'rgba(255, 255, 255, 0.065)';
+      for (let sx = -WORLD_H; sx < WORLD_W + WORLD_H; sx += 44) {
+        tCtx.beginPath();
+        tCtx.moveTo(sx, 0);
+        tCtx.lineTo(sx + 22, 0);
+        tCtx.lineTo(sx + 22 - WORLD_H * 0.25, WORLD_H);
+        tCtx.lineTo(sx - WORLD_H * 0.25, WORLD_H);
+        tCtx.closePath();
+        tCtx.fill();
+      }
+      tCtx.restore();
+
+      // 5. バンカー（立体感のある砂地）
+      for (const b of hole.bunkers) {
+        tCtx.save();
+        tCtx.beginPath();
+        tCtx.ellipse(b.x, b.y, b.rx, b.ry, b.rot || 0, 0, Math.PI * 2);
+        tCtx.fillStyle = '#e7cf8e';
+        tCtx.fill();
+        tCtx.lineWidth = 4;
+        tCtx.strokeStyle = '#bfa25d';
+        tCtx.stroke();
+
+        // バンカー内側の影ハイライト
+        tCtx.clip();
+        tCtx.beginPath();
+        tCtx.ellipse(b.x + 4, b.y + 5, b.rx, b.ry, b.rot || 0, 0, Math.PI * 2);
+        tCtx.fillStyle = '#f3dfa7';
+        tCtx.fill();
+        tCtx.restore();
+      }
+
+      // 6. グリーン（明るい芝＋細かいストライプ）
+      tCtx.save();
+      const g = hole.green;
+      tCtx.beginPath();
+      tCtx.ellipse(g.x, g.y, g.rx, g.ry, 0, 0, Math.PI * 2);
+      tCtx.fillStyle = '#65c454';
+      tCtx.fill();
+      tCtx.lineWidth = 4;
+      tCtx.strokeStyle = '#4aad42';
+      tCtx.stroke();
+
+      tCtx.clip();
+      tCtx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+      for (let gx = g.x - g.rx - 20; gx < g.x + g.rx + 20; gx += 18) {
+        tCtx.fillRect(gx, g.y - g.ry, 9, g.ry * 2);
+      }
+      tCtx.restore();
+
+      // 7. ティーグラウンド（投擲エリアの目印）
+      tCtx.save();
+      tCtx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      tCtx.beginPath();
+      tCtx.arc(hole.tee.x, hole.tee.y, 18, 0, Math.PI * 2);
+      tCtx.fill();
+      tCtx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+      tCtx.lineWidth = 2;
+      tCtx.stroke();
+      tCtx.restore();
+    }
+
+    // ------------------------------------------------------------------------
+    // ホール初期化・リセット
+    // ------------------------------------------------------------------------
+    function loadHole(index) {
+      state.holeIndex = index;
+      state.strokes = 0;
+      const hole = HOLES[index];
+
+      state.ball = {
+        x: hole.tee.x,
+        y: hole.tee.y,
+        z: 0,
+        vx: 0, vy: 0, vz: 0,
+        spinAngle: 0,
+        lastSafeX: hole.tee.x,
+        lastSafeY: hole.tee.y,
+        terrain: 'tee',
+        trail: []
+      };
+
+      // カップ方向を基準に、回転開始時に狙いやすい初期角度をセット
+      resetHammerAngleTowardCup();
+      state.particles = [];
+      state.ripples = [];
+      state.confetti = [];
+
+      renderTerrainCache(hole);
+
+      // カメラを即座にホールへ合わせる
+      const targetCam = computeDesiredCamera();
+      state.cam.x = targetCam.x;
+      state.cam.y = targetCam.y;
+      state.cam.zoom = targetCam.zoom;
+
+      if (state.phase !== 'TITLE') {
+        state.phase = 'IDLE';
+      }
+      updateHUD();
+      updateHammerUI();
+    }
+
+    function resetHammerAngleTowardCup() {
+      const hole = HOLES[state.holeIndex];
+      const toCup = Math.atan2(hole.cup.y - state.ball.y, hole.cup.x - state.ball.x);
+      // 反時計回り（angle減少）の接線方向は angle - PI/2
+      // 回転開始から少し回ったタイミングでカップ方向を通過するよう +PI/2 + 0.9rad オフセット
+      state.hammer.angle = toCup + Math.PI / 2 + 0.95;
+      state.hammer.omega = MIN_OMEGA;
+      state.hammer.spinTime = 0;
+      state.hammer.power = 0;
+      state.hammer.lastHalfTurn = Math.floor(state.hammer.angle / Math.PI);
+    }
+
+    // ------------------------------------------------------------------------
+    // トースト表示
+    // ------------------------------------------------------------------------
+    function showToast(text, duration = 1.8) {
+      toastBanner.textContent = text;
+      toastBanner.classList.remove('hidden-toast');
+      state.toastTimer = duration;
+    }
+
+    // ------------------------------------------------------------------------
+    // HUD更新
+    // ------------------------------------------------------------------------
+    function formatScoreDiff(diff) {
+      if (diff === 0) return 'E';
+      return diff > 0 ? `+${diff}` : `${diff}`;
+    }
+
+    function getTotalScoreDiff() {
+      let totalStrokes = 0;
+      let totalPar = 0;
+      for (let i = 0; i < state.scores.length; i++) {
+        totalStrokes += state.scores[i];
+        totalPar += HOLES[i].par;
+      }
+      return totalStrokes - totalPar;
+    }
+
+    function updateHUD() {
+      const hole = HOLES[state.holeIndex];
+      hudHoleNum.textContent = `${hole.num}/9`;
+      hudHoleName.textContent = hole.name;
+      hudPar.textContent = hole.par;
+      hudStrokes.textContent = state.strokes;
+      hudTotal.textContent = formatScoreDiff(getTotalScoreDiff());
+
+      const tInfo = TERRAIN_INFO[state.ball.terrain] || TERRAIN_INFO.fairway;
+      hudTerrain.textContent = tInfo.label;
+      hudTerrain.className = `text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${tInfo.cls}`;
+      hudTerrainMobile.textContent = tInfo.label;
+
+      const distPx = Math.hypot(hole.cup.x - state.ball.x, hole.cup.y - state.ball.y);
+      const distM = Math.max(0, Math.round(distPx / PIXELS_PER_METER));
+      hudDist.textContent = distM;
+      hudDistMobile.textContent = `残り ${distM}m`;
+    }
+
+    function updateHammerUI() {
+      const pct = Math.round(state.hammer.power * 100);
+      hammerPowerBadge.textContent = `${pct}%`;
+
+      const speedPx = MIN_SHOT_SPEED + state.hammer.power * (MAX_SHOT_SPEED - MIN_SHOT_SPEED);
+      const speedMs = state.phase === 'SPINNING' ? (speedPx / 18).toFixed(1) : '0.0';
+      hammerSpeedLabel.textContent = `${speedMs} m/s`;
+
+      hammerPanel.classList.remove('spinning', 'max-power');
+      if (state.phase === 'SPINNING') {
+        hammerPanel.classList.add('spinning');
+        if (state.hammer.power >= 0.98) {
+          hammerPanel.classList.add('max-power');
+          hammerActionLabel.textContent = 'MAX!! 今だリリース！';
+          hammerActionLabel.className = 'text-rose-300 font-black truncate';
+          hammerPowerBadge.className = 'text-[11px] sm:text-xs font-black px-2 py-0.5 rounded-full bg-rose-500 text-white tabular-nums';
+        } else {
+          hammerActionLabel.textContent = '押して投げる！';
+          hammerActionLabel.className = 'text-amber-300 font-black truncate';
+          hammerPowerBadge.className = 'text-[11px] sm:text-xs font-black px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 tabular-nums';
+        }
+        hudHintText.textContent = '狙った方向で クリック / スペース を押してリリース！';
+      } else if (state.phase === 'FLYING') {
+        hammerActionLabel.textContent = '飛行中...';
+        hammerActionLabel.className = 'text-sky-300 truncate';
+        hammerPowerBadge.className = 'text-[11px] sm:text-xs font-black px-2 py-0.5 rounded-full bg-white/10 text-sky-200 tabular-nums';
+        hudHintText.textContent = 'ハンマーが停止するのを待っています...';
+      } else {
+        hammerActionLabel.textContent = 'クリック/SPACEで開始';
+        hammerActionLabel.className = 'text-emerald-200 truncate';
+        hammerPowerBadge.className = 'text-[11px] sm:text-xs font-black px-2 py-0.5 rounded-full bg-white/10 text-emerald-200 tabular-nums';
+        hudHintText.textContent = 'クリック または スペースキーで回転スタート → もう一度押してリリース！';
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // ユーザー入力（クリック / タップ / スペースキー）
+    // ------------------------------------------------------------------------
+    function handlePrimaryAction() {
+      sound.init();
+
+      if (state.phase === 'TITLE') {
+        startGame();
+        return;
+      }
+      if (state.phase === 'HOLE_IN') {
+        goToNextHole();
+        return;
+      }
+      if (state.phase === 'IDLE') {
+        // 回転スタート
+        state.phase = 'SPINNING';
+        state.hammer.spinTime = 0;
+        state.hammer.omega = MIN_OMEGA;
+        state.hammer.power = 0.04;
+        state.hammer.lastHalfTurn = Math.floor(state.hammer.angle / Math.PI);
+        sound.playSpinWhoosh(0.05);
+        updateHammerUI();
+        return;
+      }
+      if (state.phase === 'SPINNING') {
+        // リリース（投擲）！
+        releaseHammer();
+      }
+    }
+
+    function releaseHammer() {
+      const p = state.hammer.power;
+      // 反時計回り（angle減少）の接線方向
+      const dirAngle = state.hammer.angle - Math.PI / 2;
+      const horizSpeed = MIN_SHOT_SPEED + p * (MAX_SHOT_SPEED - MIN_SHOT_SPEED);
+
+      // パワーが低い序盤は低弾道（パット・アプローチ）、高パワーほど高く飛び障害物を越える
+      let vz = 0;
+      if (p > 0.14) {
+        const liftFactor = (p - 0.14) / 0.86;
+        vz = 65 + liftFactor * 320;
+      }
+
+      // バンカーからは少し飛びにくくする（リアルなゴルフ感）
+      const bunkerPenalty = state.ball.terrain === 'bunker' ? 0.8 : 1.0;
+
+      state.ball.lastSafeX = state.ball.x;
+      state.ball.lastSafeY = state.ball.y;
+      state.ball.vx = Math.cos(dirAngle) * horizSpeed * bunkerPenalty;
+      state.ball.vy = Math.sin(dirAngle) * horizSpeed * bunkerPenalty;
+      state.ball.vz = vz * (state.ball.terrain === 'bunker' ? 0.92 : 1.0);
+      state.ball.trail = [{ x: state.ball.x, y: state.ball.y, z: 0 }];
+
+      state.strokes++;
+      state.phase = 'FLYING';
+      sound.playRelease(p);
+
+      // リリース時の土煙・エフェクト
+      spawnParticles(state.ball.x, state.ball.y, state.ball.terrain === 'bunker' ? '#f3dfa7' : '#d9f99d', 10, 90);
+
+      updateHUD();
+      updateHammerUI();
+    }
+
+    function startGame() {
+      sound.init();
+      startModal.classList.add('hidden');
+      state.scores = [];
+      state.phase = 'IDLE';
+      loadHole(0);
+    }
+
+    function goToNextHole() {
+      holeClearModal.classList.add('hidden');
+      if (state.holeIndex + 1 < HOLES.length) {
+        state.phase = 'IDLE';
+        loadHole(state.holeIndex + 1);
+      } else {
+        showScorecard();
+      }
+    }
+
+    function getScoreName(strokes, par) {
+      if (strokes === 1) return { title: 'ホールインワン！', color: 'text-amber-300' };
+      const diff = strokes - par;
+      if (diff <= -3) return { title: 'アルバトロス！', color: 'text-amber-300' };
+      if (diff === -2) return { title: 'イーグル！', color: 'text-yellow-300' };
+      if (diff === -1) return { title: 'バーディ！', color: 'text-emerald-300' };
+      if (diff === 0)  return { title: 'パー', color: 'text-white' };
+      if (diff === 1)  return { title: 'ボギー', color: 'text-sky-300' };
+      if (diff === 2)  return { title: 'ダブルボギー', color: 'text-orange-300' };
+      return { title: `+${diff}`, color: 'text-rose-300' };
+    }
+
+    function triggerCupIn() {
+      const hole = HOLES[state.holeIndex];
+      state.phase = 'HOLE_IN';
+      state.ball.x = hole.cup.x;
+      state.ball.y = hole.cup.y;
+      state.ball.z = 0;
+      state.ball.vx = 0;
+      state.ball.vy = 0;
+      state.ball.vz = 0;
+
+      state.scores[state.holeIndex] = state.strokes;
+      sound.playCupIn();
+      spawnConfetti(hole.cup.x, hole.cup.y);
+      updateHUD();
+      updateHammerUI();
+
+      const res = getScoreName(state.strokes, hole.par);
+      document.getElementById('clearBadge').textContent = `HOLE ${hole.num} CLEAR!`;
+      const titleEl = document.getElementById('clearResultTitle');
+      titleEl.textContent = res.title;
+      titleEl.className = `text-3xl sm:text-4xl font-black mb-1 drop-shadow ${res.color}`;
+      document.getElementById('clearResultSub').textContent = `PAR ${hole.par} を ${state.strokes}打 でカップイン`;
+      document.getElementById('clearPar').textContent = hole.par;
+      document.getElementById('clearStrokes').textContent = state.strokes;
+      document.getElementById('clearTotal').textContent = formatScoreDiff(getTotalScoreDiff());
+      btnNextHole.textContent = state.holeIndex === HOLES.length - 1
+        ? '最終スコアカードを見る →'
+        : `次のホールへ進む (HOLE ${hole.num + 1}) →`;
+
+      // 紙吹雪を見せてから少し遅れてモーダル表示
+      setTimeout(() => {
+        if (state.phase === 'HOLE_IN') {
+          holeClearModal.classList.remove('hidden');
+        }
+      }, 650);
+    }
+
+    function showScorecard() {
+      state.phase = 'SCORECARD';
+      const totalPar = HOLES.reduce((sum, h) => sum + h.par, 0);
+      const totalStrokes = state.scores.reduce((sum, s) => sum + s, 0);
+      const diff = totalStrokes - totalPar;
+
+      let rank = 'C';
+      let rankTitle = 'ハンマーゴルファー';
+      let rankGradient = 'from-sky-300 to-blue-500 text-blue-950';
+      if (diff <= -4) {
+        rank = 'S'; rankTitle = '伝説のハンマーマスター';
+        rankGradient = 'from-amber-300 via-yellow-400 to-orange-500 text-amber-950';
+      } else if (diff <= 0) {
+        rank = 'A'; rankTitle = 'プロフェッショナル投擲手';
+        rankGradient = 'from-emerald-300 to-green-500 text-emerald-950';
+      } else if (diff <= 5) {
+        rank = 'B'; rankTitle = '有望な鉄球ゴルファー';
+        rankGradient = 'from-teal-300 to-cyan-500 text-cyan-950';
+      } else if (diff <= 12) {
+        rank = 'C'; rankTitle = 'チャレンジャー';
+        rankGradient = 'from-sky-300 to-indigo-400 text-indigo-950';
+      } else {
+        rank = 'D'; rankTitle = 'まだまだ伸びしろ十分！';
+        rankGradient = 'from-rose-300 to-pink-500 text-rose-950';
+      }
+
+      const rankEl = document.getElementById('finalRankBadge');
+      rankEl.textContent = rank;
+      rankEl.className = `w-16 h-16 rounded-2xl bg-gradient-to-br ${rankGradient} font-black text-4xl flex items-center justify-center shadow-lg`;
+      document.getElementById('finalRankTitle').textContent = rankTitle;
+      document.getElementById('finalPar').textContent = totalPar;
+      document.getElementById('finalStrokes').textContent = totalStrokes;
+      document.getElementById('finalDiff').textContent = formatScoreDiff(diff);
+
+      // スコア表の構築
+      const tbody = document.getElementById('scorecardBody');
+      const parRow = `<tr class="border-t border-white/10 text-white/75">
+        <td class="py-2 px-2 font-extrabold text-emerald-300">PAR</td>
+        ${HOLES.map(h => `<td class="py-2 px-2">${h.par}</td>`).join('')}
+        <td class="py-2 px-2.5 bg-emerald-500/15 font-black">${totalPar}</td>
+      </tr>`;
+
+      const scoreCells = HOLES.map((h, i) => {
+        const sc = state.scores[i] || 0;
+        const d = sc - h.par;
+        let cls = 'text-white';
+        if (d <= -2) cls = 'text-amber-300 font-black';
+        else if (d === -1) cls = 'text-emerald-300 font-black';
+        else if (d >= 2) cls = 'text-rose-300';
+        else if (d === 1) cls = 'text-sky-300';
+        return `<td class="py-2 px-2 ${cls}">${sc}</td>`;
+      }).join('');
+
+      const scoreRow = `<tr class="border-t border-white/10 bg-white/5">
+        <td class="py-2 px-2 font-extrabold text-amber-300">打数</td>
+        ${scoreCells}
+        <td class="py-2 px-2.5 bg-amber-400/20 text-amber-300 font-black">${totalStrokes}</td>
+      </tr>`;
+
+      const diffCells = HOLES.map((h, i) => {
+        const d = (state.scores[i] || 0) - h.par;
+        return `<td class="py-1.5 px-2 text-xs text-white/70">${formatScoreDiff(d)}</td>`;
+      }).join('');
+
+      const diffRow = `<tr class="border-t border-white/10">
+        <td class="py-1.5 px-2 text-xs font-extrabold text-sky-300">±</td>
+        ${diffCells}
+        <td class="py-1.5 px-2.5 bg-sky-400/15 text-sky-300 font-black">${formatScoreDiff(diff)}</td>
+      </tr>`;
+
+      tbody.innerHTML = parRow + scoreRow + diffRow;
+      scorecardModal.classList.remove('hidden');
+    }
+
+    // ------------------------------------------------------------------------
+    // パーティクル・演出
+    // ------------------------------------------------------------------------
+    function spawnParticles(x, y, color, count, speed) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = (0.3 + Math.random() * 0.7) * speed;
+        state.particles.push({
+          x, y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          r: 2 + Math.random() * 3.5,
+          color,
+          life: 0.35 + Math.random() * 0.35,
+          maxLife: 0.7
+        });
+      }
+    }
+
+    function spawnWaterSplash(x, y) {
+      for (let i = 0; i < 3; i++) {
+        state.ripples.push({ x, y, r: 6 + i * 6, maxR: 48 + i * 16, life: 0.9, maxLife: 0.9 });
+      }
+      spawnParticles(x, y, '#bae6fd', 18, 130);
+      spawnParticles(x, y, '#ffffff', 10, 95);
+    }
+
+    function spawnConfetti(x, y) {
+      const colors = ['#fde047', '#4ade80', '#38bdf8', '#f472b6', '#fb923c', '#ffffff'];
+      for (let i = 0; i < 55; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 60 + Math.random() * 210;
+        state.confetti.push({
+          x, y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 60,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 12,
+          w: 6 + Math.random() * 5,
+          h: 4 + Math.random() * 4,
+          color: colors[i % colors.length],
+          life: 1.6 + Math.random() * 0.9,
+          maxLife: 2.5
+        });
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // カメラ計算（コース全体が綺麗に見渡せる＋飛行中のスムーズ追従）
+    // ------------------------------------------------------------------------
+    function computeDesiredCamera() {
+      const vw = courseCanvas.clientWidth || window.innerWidth;
+      const vh = courseCanvas.clientHeight || window.innerHeight;
+
+      // 画面にコース全体が綺麗に収まる基準ズーム
+      const padX = vw < 640 ? 24 : 56;
+      const padTop = vw < 640 ? 74 : 78;
+      const padBottom = vw < 640 ? 48 : 34;
+      const availW = Math.max(200, vw - padX * 2);
+      const availH = Math.max(200, vh - padTop - padBottom);
+      const fitZoom = Math.min(availW / WORLD_W, availH / WORLD_H);
+
+      if (state.cameraMode === 'overview') {
+        return { x: WORLD_W / 2, y: WORLD_H / 2 - (padTop - padBottom) / (2 * fitZoom), zoom: fitZoom };
+      }
+
+      // 自動モード：基本はコース全体が見渡せる倍率。モバイル縦画面など小さい画面ではボールを適度にズーム追従
+      const isNarrow = vw < 760;
+      const targetZoom = isNarrow
+        ? Math.max(fitZoom, Math.min(0.95, fitZoom * 1.45))
+        : (state.phase === 'FLYING' ? fitZoom * 1.08 : fitZoom);
+
+      let tx = WORLD_W / 2;
+      let ty = WORLD_H / 2;
+
+      if (targetZoom > fitZoom * 1.02) {
+        const hole = HOLES[state.holeIndex];
+        // 待機中はボールとカップの中間寄りを映し、飛行中はボールを追従
+        if (state.phase === 'FLYING') {
+          tx = state.ball.x;
+          ty = state.ball.y;
+        } else {
+          tx = state.ball.x * 0.65 + hole.cup.x * 0.35;
+          ty = state.ball.y * 0.65 + hole.cup.y * 0.35;
+        }
+        // ワールド外が見えすぎないようクランプ
+        const halfW = (vw / 2) / targetZoom;
+        const halfH = (vh / 2) / targetZoom;
+        const minX = Math.min(WORLD_W / 2, halfW - 40);
+        const maxX = Math.max(WORLD_W / 2, WORLD_W - halfW + 40);
+        const minY = Math.min(WORLD_H / 2, halfH - 50);
+        const maxY = Math.max(WORLD_H / 2, WORLD_H - halfH + 60);
+        tx = Math.max(minX, Math.min(maxX, tx));
+        ty = Math.max(minY, Math.min(maxY, ty));
+      } else {
+        ty = WORLD_H / 2 - (padTop - padBottom) / (2 * targetZoom);
+      }
+
+      return { x: tx, y: ty, zoom: targetZoom };
+    }
+
+    // ------------------------------------------------------------------------
+    // メイン物理・ロジック更新 (dt: 秒)
+    // ------------------------------------------------------------------------
+    function update(dt) {
+      state.time += dt;
+
+      // トーストタイマー
+      if (state.toastTimer > 0) {
+        state.toastTimer -= dt;
+        if (state.toastTimer <= 0) {
+          toastBanner.classList.add('hidden-toast');
+        }
+      }
+
+      // カメラをスムーズ補間
+      const desired = computeDesiredCamera();
+      const camLerp = 1 - Math.exp(-5.5 * dt);
+      state.cam.x += (desired.x - state.cam.x) * camLerp;
+      state.cam.y += (desired.y - state.cam.y) * camLerp;
+      state.cam.zoom += (desired.zoom - state.cam.zoom) * camLerp;
+
+      // 1. ハンマー回転中
+      if (state.phase === 'SPINNING') {
+        state.hammer.spinTime += dt;
+        // 時間経過で徐々に加速（イージングで序盤は狙いやすく、後半は一気に高速化）
+        const progress = Math.min(1, state.hammer.spinTime / ACCEL_TIME);
+        const eased = progress * progress * (2 - progress) * 0.35 + progress * 0.65;
+        state.hammer.power = Math.min(1, 0.04 + eased * 0.96);
+        state.hammer.omega = MIN_OMEGA + (MAX_OMEGA - MIN_OMEGA) * state.hammer.power;
+
+        // 反時計回りに回転
+        state.hammer.angle -= state.hammer.omega * dt;
+
+        // 半回転ごとに風切り音を鳴らす
+        const halfTurn = Math.floor(state.hammer.angle / Math.PI);
+        if (halfTurn !== state.hammer.lastHalfTurn) {
+          state.hammer.lastHalfTurn = halfTurn;
+          sound.playSpinWhoosh(state.hammer.power);
+        }
+
+        updateHammerUI();
+      }
+
+      // 2. ハンマー飛行・転がり物理
+      if (state.phase === 'FLYING') {
+        updateBallPhysics(dt);
+      }
+
+      // 3. パーティクル・水紋・紙吹雪更新
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(0.08, dt);
+        p.vy *= Math.pow(0.08, dt);
+        p.life -= dt;
+        if (p.life <= 0) state.particles.splice(i, 1);
+      }
+
+      for (let i = state.ripples.length - 1; i >= 0; i--) {
+        const r = state.ripples[i];
+        r.life -= dt;
+        const t = 1 - Math.max(0, r.life / r.maxLife);
+        r.r = 8 + t * r.maxR;
+        if (r.life <= 0) state.ripples.splice(i, 1);
+      }
+
+      for (let i = state.confetti.length - 1; i >= 0; i--) {
+        const c = state.confetti[i];
+        c.x += c.vx * dt;
+        c.y += c.vy * dt;
+        c.vy += 180 * dt;
+        c.vx *= Math.pow(0.35, dt);
+        c.rot += c.vrot * dt;
+        c.life -= dt;
+        if (c.life <= 0) state.confetti.splice(i, 1);
+      }
+    }
+
+    function updateBallPhysics(dt) {
+      const b = state.ball;
+      const hole = HOLES[state.holeIndex];
+
+      // 座標移動
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+
+      const speed = Math.hypot(b.vx, b.vy);
+      b.spinAngle += (speed * 0.04 + 2) * dt;
+
+      // 空中物理（Z軸）
+      if (b.z > 0 || b.vz > 0) {
+        b.z += b.vz * dt;
+        b.vz -= GRAVITY * dt;
+        // わずかな空気抵抗
+        const airDrag = Math.pow(0.92, dt);
+        b.vx *= airDrag;
+        b.vy *= airDrag;
+      }
+
+      // 軌跡ポイント記録
+      const lastT = b.trail[b.trail.length - 1];
+      if (!lastT || Math.hypot(b.x - lastT.x, b.y - lastT.y) > 9) {
+        b.trail.push({ x: b.x, y: b.y, z: Math.max(0, b.z) });
+        if (b.trail.length > 48) b.trail.shift();
+      }
+
+      // 木との衝突判定（木の高さより低い場合のみ衝突・跳ね返り）
+      if (b.z < TREE_HEIGHT) {
+        for (const tree of hole.trees) {
+          const dx = b.x - tree.x;
+          const dy = b.y - tree.y;
+          const dist = Math.hypot(dx, dy);
+          const hitR = tree.r * 0.72 + 7;
+          if (dist < hitR && dist > 0.001) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+            b.x = tree.x + nx * hitR;
+            b.y = tree.y + ny * hitR;
+
+            const dot = b.vx * nx + b.vy * ny;
+            if (dot < 0) {
+              b.vx = (b.vx - 2 * dot * nx) * 0.58;
+              b.vy = (b.vy - 2 * dot * ny) * 0.58;
+              b.vz *= 0.5;
+              sound.playWoodHit();
+              spawnParticles(b.x, b.y, '#4ade80', 10, 110);
+              spawnParticles(b.x, b.y, '#854d0e', 5, 80);
+            }
+          }
+        }
+      }
+
+      // 画面外（ワールド境界）チェック -> OB
+      if (b.x < 10 || b.x > WORLD_W - 10 || b.y < 10 || b.y > WORLD_H - 10) {
+        triggerHazard('ob');
+        return;
+      }
+
+      // 着地・バウンド・転がり処理
+      if (b.z <= 0) {
+        b.z = 0;
+        const terrain = getTerrainAt(b.x, b.y, hole);
+        b.terrain = terrain;
+
+        // 池またはOBに着地
+        if (terrain === 'water') {
+          triggerHazard('water');
+          return;
+        }
+        if (terrain === 'ob') {
+          triggerHazard('ob');
+          return;
+        }
+
+        // バウンド判定
+        if (b.vz < -42) {
+          const restitutionMap = {
+            fairway: 0.42,
+            green: 0.34,
+            rough: 0.24,
+            bunker: 0.12,
+            tee: 0.42
+          };
+          const rest = restitutionMap[terrain] ?? 0.35;
+          const impact = Math.min(1, Math.abs(b.vz) / 320);
+          b.vz = -b.vz * rest;
+          // バウンド時の水平減速
+          const horizDamp = terrain === 'bunker' ? 0.52 : (terrain === 'rough' ? 0.72 : 0.86);
+          b.vx *= horizDamp;
+          b.vy *= horizDamp;
+
+          sound.playBounce(terrain, impact);
+          const dustColor = terrain === 'bunker' ? '#f3dfa7' : (terrain === 'rough' ? '#166534' : '#bef264');
+          spawnParticles(b.x, b.y, dustColor, Math.round(5 + impact * 8), 55 + impact * 65);
+        } else {
+          // 地面を転がるフェーズ
+          b.vz = 0;
+          const frictionMap = {
+            green: 130,     // 転がりやすい
+            fairway: 165,   // 標準
+            tee: 165,
+            rough: 340,     // 減速しやすい
+            bunker: 640     // 強く減速
+          };
+          const decel = frictionMap[terrain] ?? 180;
+          const curSpeed = Math.hypot(b.vx, b.vy);
+          if (curSpeed > 0) {
+            const nextSpeed = Math.max(0, curSpeed - decel * dt);
+            const ratio = nextSpeed / curSpeed;
+            b.vx *= ratio;
+            b.vy *= ratio;
+          }
+        }
+      }
+
+      // カップイン判定（地上付近でカップに接触）
+      if (b.z < 12) {
+        const dxCup = b.x - hole.cup.x;
+        const dyCup = b.y - hole.cup.y;
+        const distCup = Math.hypot(dxCup, dyCup);
+        if (distCup < CUP_RADIUS) {
+          const curSpeed = Math.hypot(b.vx, b.vy);
+          if (curSpeed <= CUP_MAX_SPEED) {
+            triggerCupIn();
+            return;
+          } else if (distCup > 1) {
+            // 速すぎるとカップの縁に弾かれる
+            const nx = dxCup / distCup;
+            const ny = dyCup / distCup;
+            b.vx = (b.vx * 0.55) + nx * 70;
+            b.vy = (b.vy * 0.55) + ny * 70;
+            b.vz = 45;
+            sound.playLipOut();
+            showToast('惜しい！スピードが速すぎて弾かれた！', 1.4);
+          }
+        }
+      }
+
+      // 停止判定
+      const finalSpeed = Math.hypot(b.vx, b.vy);
+      if (b.z === 0 && b.vz === 0 && finalSpeed < 6) {
+        b.vx = 0;
+        b.vy = 0;
+        b.terrain = getTerrainAt(b.x, b.y, hole);
+        state.phase = 'IDLE';
+        resetHammerAngleTowardCup();
+        updateHUD();
+        updateHammerUI();
+      } else {
+        // 飛行中も残り距離を更新
+        const distPx = Math.hypot(hole.cup.x - b.x, hole.cup.y - b.y);
+        const distM = Math.max(0, Math.round(distPx / PIXELS_PER_METER));
+        hudDist.textContent = distM;
+        hudDistMobile.textContent = `残り ${distM}m`;
+      }
+    }
+
+    function triggerHazard(type) {
+      const b = state.ball;
+      state.phase = 'HAZARD';
+      b.vx = 0;
+      b.vy = 0;
+      b.vz = 0;
+
+      if (type === 'water') {
+        sound.playSplash();
+        spawnWaterSplash(b.x, b.y);
+        showToast('💦 ウォーターハザード！ +1打ペナルティ', 1.9);
+      } else {
+        sound.playWoodHit();
+        spawnParticles(b.x, b.y, '#fca5a5', 14, 100);
+        showToast('🚫 OB（コース外）！ +1打ペナルティ', 1.9);
+      }
+
+      state.strokes++;
+      updateHUD();
+
+      setTimeout(() => {
+        if (state.phase !== 'HAZARD') return;
+        b.x = b.lastSafeX;
+        b.y = b.lastSafeY;
+        b.z = 0;
+        b.trail = [];
+        b.terrain = getTerrainAt(b.x, b.y, HOLES[state.holeIndex]);
+        state.phase = 'IDLE';
+        resetHammerAngleTowardCup();
+        updateHUD();
+        updateHammerUI();
+      }, 950);
+    }
+
+    // ------------------------------------------------------------------------
+    // メインコース描画
+    // ------------------------------------------------------------------------
+    function drawCourse() {
+      const vw = courseCanvas.clientWidth;
+      const vh = courseCanvas.clientHeight;
+      const hole = HOLES[state.holeIndex];
+
+      // 背景クリア
+      ctx.fillStyle = '#0e2618';
+      ctx.fillRect(0, 0, vw, vh);
+
+      ctx.save();
+      // カメラ変換（画面中央基準）
+      ctx.translate(vw / 2, vh / 2);
+      ctx.scale(state.cam.zoom, state.cam.zoom);
+      ctx.translate(-state.cam.x, -state.cam.y);
+
+      // 1. 事前レンダリング済み地形を描画
+      ctx.drawImage(terrainCache, 0, 0);
+
+      // 2. 水面のきらめきアニメーション
+      for (const w of hole.water) {
+        ctx.save();
+        drawShapePath(ctx, w);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(224, 242, 254, 0.25)';
+        ctx.lineWidth = 2;
+        const cx = w.x || (w.x1 + w.x2) / 2;
+        const cy = w.y || (w.y1 + w.y2) / 2;
+        for (let i = -3; i <= 3; i++) {
+          const offset = Math.sin(state.time * 2.1 + i * 1.4) * 14;
+          const wy = cy + i * 32;
+          ctx.beginPath();
+          ctx.moveTo(cx - 120 + offset, wy);
+          ctx.quadraticCurveTo(cx + offset, wy - 7, cx + 120 + offset, wy);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 3. 水紋（池ポチャ演出）
+      for (const r of state.ripples) {
+        const alpha = Math.max(0, r.life / r.maxLife);
+        ctx.strokeStyle = `rgba(224, 242, 254, ${alpha * 0.85})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 4. カップとフラッグ（旗）
+      drawCupAndFlag(hole.cup);
+
+      // 5. 狙いガイド線（IDLE/SPINNING時にボール位置から接線方向へ連動表示）
+      if (state.phase === 'IDLE' || state.phase === 'SPINNING') {
+        drawAimGuide();
+      }
+
+      // 6. ハンマーの飛行軌跡
+      if (state.ball.trail.length > 1) {
+        for (let i = 1; i < state.ball.trail.length; i++) {
+          const p0 = state.ball.trail[i - 1];
+          const p1 = state.ball.trail[i];
+          const alpha = (i / state.ball.trail.length) * 0.65;
+          ctx.strokeStyle = `rgba(254, 240, 138, ${alpha})`;
+          ctx.lineWidth = 2 + (i / state.ball.trail.length) * 3;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y - p0.z);
+          ctx.lineTo(p1.x, p1.y - p1.z);
+          ctx.stroke();
+        }
+      }
+
+      // 7. ボール（ハンマー）描画（ハザード中は非表示）
+      if (state.phase !== 'HAZARD') {
+        drawHammerBall();
+      }
+
+      // 8. 木々（高いボールが上を飛べるよう、木より低い時は木を手前に、高い時はボールを手前に描画）
+      drawTrees(hole.trees);
+      if (state.phase === 'FLYING' && state.ball.z >= TREE_HEIGHT) {
+        drawHammerBall();
+      }
+
+      // 9. パーティクル・紙吹雪
+      for (const p of state.particles) {
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      for (const c of state.confetti) {
+        const alpha = Math.min(1, Math.max(0, c.life / 0.6));
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(c.x, c.y);
+        ctx.rotate(c.rot);
+        ctx.fillStyle = c.color;
+        ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h);
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
+    function drawCupAndFlag(cup) {
+      // カップの穴
+      ctx.fillStyle = '#18181b';
+      ctx.beginPath();
+      ctx.arc(cup.x, cup.y, CUP_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#e4e4e7';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // ボールがすぐ近くにあるときは旗を少し透過
+      const distBall = Math.hypot(state.ball.x - cup.x, state.ball.y - cup.y);
+      const flagAlpha = distBall < 55 ? 0.4 : 1.0;
+
+      ctx.save();
+      ctx.globalAlpha = flagAlpha;
+      // 旗の影
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cup.x, cup.y);
+      ctx.lineTo(cup.x + 28, cup.y + 12);
+      ctx.stroke();
+
+      // ポール
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cup.x, cup.y);
+      ctx.lineTo(cup.x, cup.y - 54);
+      ctx.stroke();
+
+      // なびくフラッグ
+      const wave = Math.sin(state.time * 5) * 4;
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.moveTo(cup.x, cup.y - 54);
+      ctx.quadraticCurveTo(cup.x + 15, cup.y - 49 + wave, cup.x + 30, cup.y - 45 + wave * 0.7);
+      ctx.lineTo(cup.x, cup.y - 34);
+      ctx.closePath();
+      ctx.fill();
+
+      // ホール番号テキスト
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 10px "M PLUS Rounded 1c", sans-serif';
+      ctx.fillText(HOLES[state.holeIndex].num, cup.x + 5, cup.y - 41);
+      ctx.restore();
+    }
+
+    function drawAimGuide() {
+      const b = state.ball;
+      const dirAngle = state.hammer.angle - Math.PI / 2;
+      const p = state.phase === 'SPINNING' ? state.hammer.power : 0.28;
+      const guideLen = 85 + p * 300;
+
+      const ex = b.x + Math.cos(dirAngle) * guideLen;
+      const ey = b.y + Math.sin(dirAngle) * guideLen;
+
+      // パワーに応じた色変化（緑→黄→赤）
+      const color = getPowerColor(p);
+
+      ctx.save();
+      ctx.strokeStyle = state.phase === 'SPINNING' ? color : 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = state.phase === 'SPINNING' ? 3.5 : 2.5;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -state.time * (state.phase === 'SPINNING' ? 90 : 30);
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 先端の矢印
+      const headLen = 12;
+      ctx.fillStyle = state.phase === 'SPINNING' ? color : 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - headLen * Math.cos(dirAngle - 0.42), ey - headLen * Math.sin(dirAngle - 0.42));
+      ctx.lineTo(ex - headLen * Math.cos(dirAngle + 0.42), ey - headLen * Math.sin(dirAngle + 0.42));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawHammerBall() {
+      const b = state.ball;
+      const z = Math.max(0, b.z);
+
+      // 地面の影（高さに応じて薄く小さく）
+      const shadowScale = Math.max(0.45, 1 - z / 280);
+      ctx.fillStyle = `rgba(0, 0, 0, ${0.38 * shadowScale})`;
+      ctx.beginPath();
+      ctx.ellipse(b.x + 3, b.y + 4, 9 * shadowScale, 6.5 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 空中の見た目（高さに応じて少し拡大＆上方向へオフセット）
+      const visualScale = 1 + Math.min(0.65, z / 200);
+      const bx = b.x;
+      const by = b.y - z;
+
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.scale(visualScale, visualScale);
+
+      // ハンマーの短いワイヤー＋グリップ（飛行中はクルクル回転）
+      const wireAngle = state.phase === 'FLYING' ? b.spinAngle : (state.hammer.angle + Math.PI);
+      const wx = Math.cos(wireAngle) * 16;
+      const wy = Math.sin(wireAngle) * 16;
+
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(wx, wy);
+      ctx.stroke();
+
+      // グリップ三角形
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(wx, wy, 3.2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 鉄球本体（メタリックグラデーション）
+      const ballGrad = ctx.createRadialGradient(-2.5, -2.5, 1, 0, 0, 8);
+      ballGrad.addColorStop(0, '#f8fafc');
+      ballGrad.addColorStop(0.35, '#94a3b8');
+      ballGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = ballGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawTrees(trees) {
+      for (const t of trees) {
+        // 木の影
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+        ctx.beginPath();
+        ctx.arc(t.x + 7, t.y + 8, t.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 外側の濃い葉
+        ctx.fillStyle = '#14532d';
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 中間の葉
+        ctx.fillStyle = '#166534';
+        ctx.beginPath();
+        ctx.arc(t.x - 3, t.y - 3, t.r * 0.78, 0, Math.PI * 2);
+        ctx.fill();
+
+        // ハイライトの葉
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(t.x - 6, t.y - 6, t.r * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // ------------------------------------------------------------------------
+    // 左下：ハンマー投げ専用ウィンドウ描画
+    // ------------------------------------------------------------------------
+    function getPowerColor(p) {
+      if (p < 0.45) return '#4ade80'; // 緑
+      if (p < 0.78) return '#facc15'; // 黄
+      if (p < 0.96) return '#fb923c'; // オレンジ
+      return '#f87171';               // 赤（MAX）
+    }
+
+    function drawHammerWindow() {
+      const w = hammerCanvas.width;
+      const h = hammerCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      hCtx.clearRect(0, 0, w, h);
+
+      // 1. 投擲サークルの背景（コンクリート調）
+      const bgGrad = hCtx.createRadialGradient(cx, cy, 10, cx, cy, w * 0.48);
+      bgGrad.addColorStop(0, '#334155');
+      bgGrad.addColorStop(0.82, '#1e293b');
+      bgGrad.addColorStop(1, '#0f172a');
+      hCtx.fillStyle = bgGrad;
+      hCtx.beginPath();
+      hCtx.arc(cx, cy, w * 0.47, 0, Math.PI * 2);
+      hCtx.fill();
+
+      // サークルの補助十字線
+      hCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      hCtx.lineWidth = 1.5;
+      hCtx.beginPath();
+      hCtx.moveTo(cx - 86, cy); hCtx.lineTo(cx + 86, cy);
+      hCtx.moveTo(cx, cy - 86); hCtx.lineTo(cx, cy + 86);
+      hCtx.stroke();
+
+      // 内側の投擲リング
+      hCtx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
+      hCtx.lineWidth = 2;
+      hCtx.beginPath();
+      hCtx.arc(cx, cy, 66, 0, Math.PI * 2);
+      hCtx.stroke();
+
+      // 2. 外周パワーメーターリング
+      const p = state.phase === 'SPINNING' ? state.hammer.power : 0;
+      const pColor = getPowerColor(p);
+
+      // 背景トラック
+      hCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      hCtx.lineWidth = 9;
+      hCtx.beginPath();
+      hCtx.arc(cx, cy, 98, 0, Math.PI * 2);
+      hCtx.stroke();
+
+      // アクティブパワーゲージ
+      if (p > 0.01) {
+        hCtx.strokeStyle = pColor;
+        hCtx.lineWidth = 9;
+        hCtx.lineCap = 'round';
+        hCtx.beginPath();
+        hCtx.arc(cx, cy, 98, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+        hCtx.stroke();
+      }
+
+      // 3. ハンマーの位置計算
+      const angle = state.hammer.angle;
+      const dirAngle = angle - Math.PI / 2; // 接線方向
+      const wireLen = 58 + p * 12;          // 遠心力で少し外に伸びる表現
+      const hx = cx + Math.cos(angle) * wireLen;
+      const hy = cy + Math.sin(angle) * wireLen;
+
+      // 回転の残像アーク（SPINNING中）
+      if (state.phase === 'SPINNING') {
+        const trailArc = 0.4 + p * 1.4;
+        hCtx.strokeStyle = pColor;
+        hCtx.globalAlpha = 0.28 + p * 0.25;
+        hCtx.lineWidth = 5 + p * 4;
+        hCtx.lineCap = 'round';
+        hCtx.beginPath();
+        hCtx.arc(cx, cy, wireLen, angle, angle + trailArc);
+        hCtx.stroke();
+        hCtx.globalAlpha = 1;
+      }
+
+      // 4. 現在の接線方向（飛ぶ方向）の矢印
+      if (state.phase !== 'FLYING') {
+        const arrowLen = 30 + p * 26;
+        const ax = hx + Math.cos(dirAngle) * arrowLen;
+        const ay = hy + Math.sin(dirAngle) * arrowLen;
+
+        hCtx.strokeStyle = state.phase === 'SPINNING' ? pColor : '#94a3b8';
+        hCtx.lineWidth = 3.5;
+        hCtx.lineCap = 'round';
+        hCtx.beginPath();
+        hCtx.moveTo(hx, hy);
+        hCtx.lineTo(ax, ay);
+        hCtx.stroke();
+
+        // 矢印ヘッド
+        hCtx.fillStyle = state.phase === 'SPINNING' ? pColor : '#cbd5e1';
+        hCtx.beginPath();
+        hCtx.moveTo(ax, ay);
+        hCtx.lineTo(ax - 10 * Math.cos(dirAngle - 0.45), ay - 10 * Math.sin(dirAngle - 0.45));
+        hCtx.lineTo(ax - 10 * Math.cos(dirAngle + 0.45), ay - 10 * Math.sin(dirAngle + 0.45));
+        hCtx.closePath();
+        hCtx.fill();
+      }
+
+      // 5. ワイヤーとハンマー鉄球（飛行中は手元から離れている表現）
+      if (state.phase !== 'FLYING') {
+        // ワイヤー
+        hCtx.strokeStyle = '#e2e8f0';
+        hCtx.lineWidth = 2.5;
+        hCtx.beginPath();
+        hCtx.moveTo(cx + Math.cos(angle) * 16, cy + Math.sin(angle) * 16);
+        hCtx.lineTo(hx, hy);
+        hCtx.stroke();
+
+        // 鉄球
+        const ballGrad = hCtx.createRadialGradient(hx - 3, hy - 3, 2, hx, hy, 11);
+        ballGrad.addColorStop(0, '#ffffff');
+        ballGrad.addColorStop(0.35, '#94a3b8');
+        ballGrad.addColorStop(1, '#0f172a');
+        hCtx.fillStyle = ballGrad;
+        hCtx.beginPath();
+        hCtx.arc(hx, hy, 10.5, 0, Math.PI * 2);
+        hCtx.fill();
+        hCtx.strokeStyle = state.phase === 'SPINNING' ? pColor : '#334155';
+        hCtx.lineWidth = 2;
+        hCtx.stroke();
+      }
+
+      // 6. 中央の選手キャラクター（トップダウン視点・ハンマーの方向を向いて回転）
+      hCtx.save();
+      hCtx.translate(cx, cy);
+      hCtx.rotate(angle);
+
+      // 両腕（ハンマー側へ伸ばす）
+      hCtx.strokeStyle = '#fdba74';
+      hCtx.lineWidth = 5;
+      hCtx.lineCap = 'round';
+      hCtx.beginPath();
+      hCtx.moveTo(2, -13);
+      hCtx.lineTo(18, -3);
+      hCtx.moveTo(2, 13);
+      hCtx.lineTo(18, 3);
+      hCtx.stroke();
+
+      // 肩・ユニフォーム
+      hCtx.fillStyle = '#10b981';
+      hCtx.strokeStyle = '#064e3b';
+      hCtx.lineWidth = 2;
+      hCtx.beginPath();
+      hCtx.ellipse(0, 0, 11, 18, 0, 0, Math.PI * 2);
+      hCtx.fill();
+      hCtx.stroke();
+
+      // 頭部（帽子付き）
+      hCtx.fillStyle = '#fed7aa';
+      hCtx.beginPath();
+      hCtx.arc(1, 0, 9.5, 0, Math.PI * 2);
+      hCtx.fill();
+
+      // サンバイザー／キャップ
+      hCtx.fillStyle = '#f59e0b';
+      hCtx.beginPath();
+      hCtx.arc(0, 0, 9.5, Math.PI * 0.4, Math.PI * 1.6);
+      hCtx.fill();
+      // つば
+      hCtx.fillStyle = '#fbbf24';
+      hCtx.beginPath();
+      hCtx.ellipse(7, 0, 5, 6.5, 0, -Math.PI / 2, Math.PI / 2);
+      hCtx.fill();
+
+      hCtx.restore();
+    }
+
+    // ------------------------------------------------------------------------
+    // リサイズ処理（高DPI対応）
+    // ------------------------------------------------------------------------
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      courseCanvas.width = Math.floor(vw * dpr);
+      courseCanvas.height = Math.floor(vh * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // ------------------------------------------------------------------------
+    // イベントリスナー登録
+    // ------------------------------------------------------------------------
+    // メインCanvasまたは左下ハンマーウィンドウのクリック・タップ
+    function onPointerAction(e) {
+      // ボタン等のUIクリック時は発火しない
+      if (e.target.closest('button')) return;
+      if (state.phase === 'SCORECARD') return;
+      handlePrimaryAction();
+    }
+
+    courseCanvas.addEventListener('pointerdown', onPointerAction);
+    hammerPanel.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handlePrimaryAction();
+    });
+
+    // スペースキー操作
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (e.repeat) return;
+        if (state.phase === 'SCORECARD') return;
+        handlePrimaryAction();
+      }
+    });
+
+    // ボタンイベント
+    btnStartGame.addEventListener('click', startGame);
+    btnNextHole.addEventListener('click', goToNextHole);
+    btnPlayAgain.addEventListener('click', () => {
+      scorecardModal.classList.add('hidden');
+      state.scores = [];
+      state.phase = 'IDLE';
+      loadHole(0);
+    });
+
+    btnRetry.addEventListener('click', () => {
+      sound.init();
+      holeClearModal.classList.add('hidden');
+      scorecardModal.classList.add('hidden');
+      state.phase = 'IDLE';
+      loadHole(state.holeIndex);
+      showToast(`HOLE ${HOLES[state.holeIndex].num} をやり直します`, 1.2);
+    });
+
+    btnSound.addEventListener('click', () => {
+      sound.init();
+      sound.enabled = !sound.enabled;
+      btnSoundIcon.textContent = sound.enabled ? '🔊' : '🔇';
+      showToast(sound.enabled ? 'サウンド ON' : 'サウンド OFF', 1.0);
+    });
+
+    btnCamera.addEventListener('click', () => {
+      state.cameraMode = state.cameraMode === 'auto' ? 'overview' : 'auto';
+      btnCameraText.textContent = state.cameraMode === 'auto' ? '自動追従' : '全体表示';
+      showToast(state.cameraMode === 'auto' ? 'カメラ：自動追従' : 'カメラ：コース全体', 1.1);
+    });
+
+    // ------------------------------------------------------------------------
+    // メインアニメーションループ
+    // ------------------------------------------------------------------------
+    let lastTimestamp = 0;
+
+    function gameLoop(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = Math.min(0.05, (timestamp - lastTimestamp) / 1000);
+      lastTimestamp = timestamp;
+
+      update(dt);
+      drawCourse();
+      drawHammerWindow();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 初期化してループ開始
+    window.onload = function () {
+      resizeCanvas();
+      loadHole(0);
+      requestAnimationFrame(gameLoop);
+    };
+  })();
+  </script>
+</body>
+</html>
