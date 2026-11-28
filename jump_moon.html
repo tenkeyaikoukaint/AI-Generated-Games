@@ -50,6 +50,7 @@
   const PIXELS_PER_METER = 10;
   const GOAL_METERS = 1000;
   const GOAL_Y = -GOAL_METERS * PIXELS_PER_METER; // y=0が地上、上がマイナス
+  const ENDING_COOLDOWN_MS = 1500;
 
   // キー入力
   const keys = {};
@@ -59,7 +60,11 @@
       e.preventDefault();
     }
     if (e.code === 'KeyR') initGame();
-    if (state === 'ending' && (e.code === 'Space' || e.code === 'Enter')) {
+    if (
+      state === 'ending' &&
+      (e.code === 'Space' || e.code === 'Enter') &&
+      performance.now() - endingStartTime >= ENDING_COOLDOWN_MS
+    ) {
       initGame();
     }
   });
@@ -69,7 +74,7 @@
 
   // ゲーム状態
   let state = 'playing'; // 'playing' | 'ending'
-  let player, platforms, stars, cameraY, maxAltitude, maxFall, fallStartAlt, startTime, clearTime, frameCount;
+  let player, platforms, stars, cameraY, maxAltitude, maxFall, fallStartAlt, startTime, clearTime, endingStartTime, frameCount;
 
   // 高度に応じたゾーン判定
   function getZone(meters) {
@@ -86,20 +91,20 @@
     // 地上
     list.push({
       x: 0, y: 0, w: W, h: 40,
-      type: 'ground', vx: 0, vy: 0, baseX: 0, baseY: 0, range: 0
+      type: 'ground', vx: 0, phase: 0
     });
 
     let currentY = -95;
     let prevCenterX = W / 2;
 
-    while (currentY > GOAL_Y + 90) {
+    // 月の手前（GOAL_Y + 180）まで通常生成
+    while (currentY > GOAL_Y + 180) {
       const meters = -currentY / PIXELS_PER_METER;
       const zone = getZone(meters).id;
 
       let w = 96;
       let h = 18;
       let vx = 0;
-      let range = 0;
 
       if (zone === 'building') {
         w = 88 + Math.random() * 40;
@@ -113,13 +118,13 @@
         h = 20;
         vx = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.6);
       } else if (zone === 'rocket') {
-        w = 72;
+        w = 76;
         h = 20;
-        vx = (Math.random() < 0.5 ? 1 : -1) * (1.6 + Math.random() * 1.4);
+        vx = (Math.random() < 0.5 ? 1 : -1) * (1.5 + Math.random() * 1.3);
       }
 
       // 前の足場から水平に届きやすい範囲に配置
-      const maxOffset = 185;
+      const maxOffset = 180;
       let minX = Math.max(16, prevCenterX - maxOffset - w / 2);
       let maxX = Math.min(W - w - 16, prevCenterX + maxOffset - w / 2);
       if (minX > maxX) { minX = 16; maxX = W - w - 16; }
@@ -133,9 +138,22 @@
       });
 
       prevCenterX = x + w / 2;
-      // 垂直間隔（最大ジャンプ約165pxに対し、90〜125pxで確実に届く）
-      currentY -= 92 + Math.random() * 34;
+      // 垂直間隔（最大ジャンプ約165pxに対し、92〜124pxで確実に届く）
+      currentY -= 92 + Math.random() * 32;
     }
+
+    // 修正1: 月の直前に確実に届く最終ロケット足場を1つ保証する
+    const finalW = 84;
+    const finalX = Math.max(20, Math.min(W - finalW - 20, prevCenterX - finalW / 2));
+    list.push({
+      x: finalX,
+      y: GOAL_Y + 105,
+      w: finalW,
+      h: 20,
+      type: 'rocket',
+      vx: 1.4,
+      phase: 0
+    });
 
     // 月（ゴール）
     list.push({
@@ -174,6 +192,14 @@
     fallStartAlt = 0;
     startTime = performance.now();
     clearTime = 0;
+    endingStartTime = 0;
+  }
+
+  function triggerEnding() {
+    if (state === 'ending') return;
+    state = 'ending';
+    clearTime = (performance.now() - startTime) / 1000;
+    endingStartTime = performance.now();
   }
 
   // 色補間ユーティリティ
@@ -245,14 +271,34 @@
     player.onGround = false;
     player.ridingPlatform = null;
 
-    // 足場との着地判定（下降中のみすり抜け床として機能）
+    // 修正2: 月（ゴール）はすり抜け防止のため、足元が月面に到達した時点で確実にクリア
+    if (player.y + player.h <= GOAL_Y + 12 && player.vy >= 0 && prevBottom <= GOAL_Y + 24) {
+      player.y = GOAL_Y - player.h;
+      player.vy = 0;
+      player.onGround = true;
+      triggerEnding();
+      return;
+    }
+
+    // 通常足場との着地判定（下降中のみすり抜け床として機能）
     if (player.vy >= 0) {
       const currBottom = player.y + player.h;
       for (const p of platforms) {
+        if (p.type === 'moon') {
+          if (prevBottom <= p.y + 16 && currBottom >= p.y) {
+            player.y = p.y - player.h;
+            player.vy = 0;
+            player.onGround = true;
+            triggerEnding();
+            return;
+          }
+          continue;
+        }
+
         if (
           player.x + player.w > p.x + 4 &&
           player.x < p.x + p.w - 4 &&
-          prevBottom <= p.y + 8 &&
+          prevBottom <= p.y + 10 &&
           currBottom >= p.y
         ) {
           player.y = p.y - player.h;
@@ -265,18 +311,12 @@
             if (fallen > maxFall) maxFall = fallen;
           }
           fallStartAlt = 0;
-
-          // 月に到達したらエンディングへ
-          if (p.type === 'moon') {
-            state = 'ending';
-            clearTime = (performance.now() - startTime) / 1000;
-          }
           break;
         }
       }
     }
 
-    // カメラ追従（プレイヤーを画面下寄り〜中央に保つ）
+    // カメラ追従
     const targetCamY = player.y - H * 0.58;
     cameraY += (targetCamY - cameraY) * 0.12;
     if (cameraY > -H + 80) cameraY = -H + 80;
@@ -312,7 +352,7 @@
         const tw = 0.5 + 0.5 * Math.sin(frameCount * 0.05 + s.twinkle);
         ctx.fillStyle = `rgba(255, 255, 255, ${alpha * (0.4 + 0.6 * tw)})`;
         ctx.beginPath();
-        ctx.arc(s.x, (s.y - cameraY * 0.08) % H, s.r, 0, Math.PI * 2);
+        ctx.arc(s.x, ((s.y - cameraY * 0.08) % H + H) % H, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -329,12 +369,10 @@
     }
 
     if (p.type === 'building') {
-      // ビルの屋上と外壁
       ctx.fillStyle = '#475569';
       ctx.fillRect(p.x, screenY, p.w, p.h + 18);
       ctx.fillStyle = '#94a3b8';
       ctx.fillRect(p.x - 2, screenY, p.w + 4, 5);
-      // 窓
       ctx.fillStyle = '#fde047';
       for (let wx = p.x + 8; wx < p.x + p.w - 10; wx += 16) {
         ctx.fillRect(wx, screenY + 10, 8, 10);
@@ -343,20 +381,16 @@
     }
 
     if (p.type === 'heli') {
-      // ヘリコプター本体
       ctx.fillStyle = '#ef4444';
       ctx.beginPath();
       ctx.roundRect(p.x + 12, screenY + 4, p.w - 24, 16, 6);
       ctx.fill();
-      // キャノピー
       ctx.fillStyle = '#bae6fd';
       const noseX = p.vx >= 0 ? p.x + p.w - 28 : p.x + 14;
       ctx.fillRect(noseX, screenY + 7, 14, 8);
-      // テール
       ctx.fillStyle = '#b91c1c';
       const tailX = p.vx >= 0 ? p.x : p.x + p.w - 16;
       ctx.fillRect(tailX, screenY + 10, 16, 4);
-      // ローター（回転アニメ）
       const rotorW = (p.w * 0.45) * (0.4 + 0.6 * Math.abs(Math.sin(frameCount * 0.45)));
       ctx.fillStyle = '#1e293b';
       ctx.fillRect(p.x + p.w / 2 - 2, screenY - 2, 4, 6);
@@ -378,16 +412,13 @@
     }
 
     if (p.type === 'rocket') {
-      // 横向き・ブースター型ロケット足場
       ctx.fillStyle = '#e2e8f0';
       ctx.beginPath();
       ctx.roundRect(p.x + 6, screenY, p.w - 12, p.h, 6);
       ctx.fill();
-      // 赤いノーズ/ライン
       ctx.fillStyle = '#dc2626';
       ctx.fillRect(p.x + 14, screenY, 8, p.h);
       ctx.fillRect(p.x + p.w - 22, screenY, 8, p.h);
-      // 噴射炎
       const flame = 6 + Math.random() * 10;
       ctx.fillStyle = '#f97316';
       if (p.vx >= 0) {
@@ -418,24 +449,20 @@
     }
   }
 
-  // プレイヤー描画（宇宙服風の小さなキャラ）
+  // プレイヤー描画
   function drawPlayer() {
     const px = player.x;
     const py = player.y - cameraY;
 
-    // 体
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(px + 4, py + 12, player.w - 8, 16);
-    // ヘルメット
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(px + player.w / 2, py + 9, 9, 0, Math.PI * 2);
     ctx.fill();
-    // バイザー
     ctx.fillStyle = '#38bdf8';
     const vx = player.facing === 1 ? px + 11 : px + 5;
     ctx.fillRect(vx, py + 6, 8, 6);
-    // 足
     ctx.fillStyle = '#f59e0b';
     ctx.fillRect(px + 5, py + 28, 5, 6);
     ctx.fillRect(px + 14, py + 28, 5, 6);
@@ -455,7 +482,6 @@
     ctx.font = '13px monospace';
     ctx.fillText(`AREA: ${zone.name}`, 20, 54);
 
-    // 右側の高度ゲージ
     const barX = W - 18;
     const barY = 40;
     const barH = H - 80;
@@ -468,11 +494,9 @@
 
   // エンディング画面：月から見た地球
   function drawEnding() {
-    // 漆黒の宇宙
     ctx.fillStyle = '#02040a';
     ctx.fillRect(0, 0, W, H);
 
-    // 星空
     for (const s of stars) {
       const tw = 0.5 + 0.5 * Math.sin(frameCount * 0.04 + s.twinkle);
       ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + 0.6 * tw})`;
@@ -481,12 +505,10 @@
       ctx.fill();
     }
 
-    // 地球（青い光輪＋海＋大陸＋雲）
     const ex = W / 2;
     const ey = 225;
     const er = 82;
 
-    // 大気の青いグロー
     const glow = ctx.createRadialGradient(ex, ey, er * 0.85, ex, ey, er * 1.45);
     glow.addColorStop(0, 'rgba(56, 189, 248, 0.45)');
     glow.addColorStop(1, 'rgba(56, 189, 248, 0)');
@@ -495,13 +517,11 @@
     ctx.arc(ex, ey, er * 1.45, 0, Math.PI * 2);
     ctx.fill();
 
-    // 地球本体（クリップして海・大陸・雲を描く）
     ctx.save();
     ctx.beginPath();
     ctx.arc(ex, ey, er, 0, Math.PI * 2);
     ctx.clip();
 
-    // 海
     const seaGrad = ctx.createRadialGradient(ex - 25, ey - 25, 10, ex, ey, er);
     seaGrad.addColorStop(0, '#38bdf8');
     seaGrad.addColorStop(0.65, '#0284c7');
@@ -509,7 +529,6 @@
     ctx.fillStyle = seaGrad;
     ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
 
-    // 大陸（簡易的な緑・茶のシルエット）
     ctx.fillStyle = '#22c55e';
     ctx.beginPath();
     ctx.ellipse(ex - 22, ey - 18, 32, 20, -0.3, 0, Math.PI * 2);
@@ -517,7 +536,6 @@
     ctx.ellipse(ex - 35, ey + 34, 18, 12, 0.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // 雲
     ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
     ctx.beginPath();
     ctx.ellipse(ex - 10, ey - 38, 42, 8, 0.1, 0, Math.PI * 2);
@@ -525,20 +543,17 @@
     ctx.ellipse(ex - 15, ey + 28, 44, 10, 0.05, 0, Math.PI * 2);
     ctx.fill();
 
-    // 夜の影（地球の欠け）
     ctx.fillStyle = 'rgba(2, 6, 23, 0.55)';
     ctx.beginPath();
     ctx.arc(ex + 46, ey + 28, er * 1.1, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // 手前の月面（緩やかな弧）
     ctx.fillStyle = '#cbd5e1';
     ctx.beginPath();
     ctx.ellipse(W / 2, H + 90, W * 0.85, 220, 0, Math.PI, Math.PI * 2);
     ctx.fill();
 
-    // 月面のクレーター
     ctx.fillStyle = '#94a3b8';
     ctx.beginPath();
     ctx.ellipse(110, H - 70, 38, 12, -0.1, 0, Math.PI * 2);
@@ -546,14 +561,12 @@
     ctx.ellipse(230, H - 30, 28, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // 月面に立つプレイヤーのシルエット
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(W / 2 - 6, H - 152, 12, 18);
     ctx.beginPath();
     ctx.arc(W / 2, H - 158, 7, 0, Math.PI * 2);
     ctx.fill();
 
-    // テキスト
     ctx.textAlign = 'center';
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 26px monospace';
@@ -563,9 +576,12 @@
     ctx.font = '15px monospace';
     ctx.fillText(`CLEAR TIME: ${clearTime.toFixed(1)}s  /  MAX FALL: ${maxFall}m`, W / 2, 104);
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '14px monospace';
-    ctx.fillText('PRESS SPACE OR ENTER TO PLAY AGAIN', W / 2, H - 24);
+    // 修正3: クールダウン経過後にリスタート案内を表示
+    if (performance.now() - endingStartTime >= ENDING_COOLDOWN_MS) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '14px monospace';
+      ctx.fillText('PRESS SPACE OR ENTER TO PLAY AGAIN', W / 2, H - 24);
+    }
     ctx.textAlign = 'left';
   }
 
